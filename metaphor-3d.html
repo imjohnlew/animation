@@ -1,0 +1,770 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>3D Metaphorical Animations</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #000; overflow: hidden; font-family: system-ui, sans-serif; }
+    canvas { display: block; }
+    #ui {
+      position: fixed; bottom: 20px; left: 50%;
+      transform: translateX(-50%);
+      display: flex; gap: 8px; z-index: 10;
+    }
+    #ui button {
+      padding: 7px 20px;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.2);
+      color: white; cursor: pointer;
+      border-radius: 6px; font-size: 13px;
+      transition: background 0.15s;
+    }
+    #ui button:hover { background: rgba(255,255,255,0.18); }
+    #ui button.active {
+      background: rgba(245,208,90,0.25);
+      border-color: rgba(245,208,90,0.5);
+      color: #f5d05a;
+    }
+    #timer {
+      position: fixed; top: 12px; left: 12px;
+      color: rgba(255,255,255,0.35);
+      font-size: 11px; font-family: monospace; z-index: 10;
+    }
+    #hint {
+      position: fixed; top: 12px; right: 12px;
+      color: rgba(255,255,255,0.25);
+      font-size: 11px; font-family: monospace;
+      text-align: right; line-height: 1.6; z-index: 10;
+    }
+    #overlay {
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: #000; z-index: 5; pointer-events: none;
+      opacity: 0; transition: opacity 0.4s;
+    }
+    #scene-label {
+      position: fixed; top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      color: #f5d05a; font-size: 18px; font-family: monospace;
+      z-index: 6; pointer-events: none; opacity: 0;
+      transition: opacity 0.3s; text-align: center;
+      text-shadow: 0 0 20px rgba(245,208,90,0.4);
+    }
+  </style>
+</head>
+<body>
+  <div id="ui">
+    <button id="btn-restart">&#8634; Restart</button>
+    <button id="btn-pp">&#9208; Pause</button>
+    <button class="active" data-scene="0">1: Roller Coaster</button>
+    <button data-scene="1">2: Ships at Sea</button>
+    <button data-scene="2">3: Ring Assembly</button>
+  </div>
+  <div id="timer">0.00s</div>
+  <div id="hint">Record with OBS<br>1920x1080 recommended</div>
+  <div id="overlay"></div>
+  <div id="scene-label"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"
+    }
+  }
+  </script>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+    import { RenderPass }     from 'three/addons/postprocessing/RenderPass.js';
+    import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+    /* ============================================================
+       GLOBALS
+    ============================================================ */
+    const GOLD_COLOR   = 0xf5d05a;
+    const SILVER_COLOR = 0xc0c0c0;
+    const BG_COLOR     = 0x05050f;
+    const SCENE_DURATION = 5; // seconds per scene
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.2;
+    document.body.appendChild(renderer.domElement);
+
+    let currentSceneIdx = 0;
+    let paused = false;
+    let sceneTime = 0;
+    let globalClock = new THREE.Clock();
+    let activeScene = null;
+    let activeCamera = null;
+    let activeComposer = null;
+    let sceneTimeline = null;
+    let animateCallback = null;
+
+    const scenes = [];
+    const sceneNames = ['Roller Coaster', 'Ships at Sea', 'Ring Assembly'];
+
+    /* ============================================================
+       HELPERS
+    ============================================================ */
+    function goldMat(emissiveStrength = 0.15) {
+      return new THREE.MeshStandardMaterial({
+        color: GOLD_COLOR, metalness: 0.9, roughness: 0.25,
+        emissive: GOLD_COLOR, emissiveIntensity: emissiveStrength
+      });
+    }
+    function silverMat(emissiveStrength = 0.08) {
+      return new THREE.MeshStandardMaterial({
+        color: SILVER_COLOR, metalness: 0.9, roughness: 0.3,
+        emissive: SILVER_COLOR, emissiveIntensity: emissiveStrength
+      });
+    }
+
+    function createStarField(scene, count = 300, spread = 60) {
+      const geo = new THREE.BufferGeometry();
+      const verts = new Float32Array(count * 3);
+      for (let i = 0; i < count * 3; i++) {
+        verts[i] = (Math.random() - 0.5) * spread;
+      }
+      geo.setAttribute('position', new THREE.BufferAttribute(verts, 3));
+      const mat = new THREE.PointsMaterial({ color: 0xffffff, size: 0.08, transparent: true, opacity: 0.5 });
+      scene.add(new THREE.Points(geo, mat));
+    }
+
+    function addStandardLights(scene) {
+      const amb = new THREE.AmbientLight(0x404060, 0.6);
+      scene.add(amb);
+      const dir = new THREE.DirectionalLight(0xffffff, 1.2);
+      dir.position.set(5, 10, 7);
+      scene.add(dir);
+      const pt = new THREE.PointLight(GOLD_COLOR, 0.6, 50);
+      pt.position.set(-5, 5, 3);
+      scene.add(pt);
+    }
+
+    /* ============================================================
+       SCENE 1: ROLLER COASTER
+    ============================================================ */
+    function buildScene1() {
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(BG_COLOR);
+      const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 200);
+      camera.position.set(0, 8, 25);
+      camera.lookAt(0, 3, 0);
+
+      addStandardLights(scene);
+      createStarField(scene, 400, 80);
+
+      // Track curve
+      const points = [
+        new THREE.Vector3(-15, 0, 0),
+        new THREE.Vector3(-10, 8, 0),
+        new THREE.Vector3(-5, -2, 0),
+        new THREE.Vector3(0, 12, 0),
+        new THREE.Vector3(5, 0, 0),
+        new THREE.Vector3(10, 6, 0),
+        new THREE.Vector3(15, 0, 0),
+      ];
+      const curve = new THREE.CatmullRomCurve3(points);
+
+      // Track mesh — tube
+      const tubeGeo = new THREE.TubeGeometry(curve, 200, 0.15, 8, false);
+      const tubeMat = new THREE.MeshStandardMaterial({
+        color: 0x666680, metalness: 0.8, roughness: 0.3,
+        emissive: 0x333344, emissiveIntensity: 0.15
+      });
+      scene.add(new THREE.Mesh(tubeGeo, tubeMat));
+
+      // Rails (two side rails)
+      for (const offset of [-0.4, 0.4]) {
+        const railPts = [];
+        for (let t = 0; t <= 1; t += 0.005) {
+          const p = curve.getPointAt(t);
+          const n = curve.getTangentAt(t).cross(new THREE.Vector3(0, 0, 1)).normalize();
+          railPts.push(p.clone().add(n.multiplyScalar(offset)));
+        }
+        const railCurve = new THREE.CatmullRomCurve3(railPts);
+        const railGeo = new THREE.TubeGeometry(railCurve, 200, 0.06, 6, false);
+        scene.add(new THREE.Mesh(railGeo, tubeMat));
+      }
+
+      // Support pillars
+      for (let t = 0; t < 1; t += 0.1) {
+        const p = curve.getPointAt(t);
+        if (p.y > 0.5) {
+          const pillarH = p.y + 2;
+          const pillarGeo = new THREE.CylinderGeometry(0.06, 0.06, pillarH, 6);
+          const pillar = new THREE.Mesh(pillarGeo, tubeMat);
+          pillar.position.set(p.x, p.y - pillarH / 2 - 1.5, p.z);
+          scene.add(pillar);
+        }
+      }
+
+      // Gold block
+      const goldBlock = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.8, 0.8), goldMat(0.3));
+      scene.add(goldBlock);
+
+      // Silver block
+      const silverBlock = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.7, 0.7), silverMat(0.2));
+      scene.add(silverBlock);
+
+      // Particle trail system
+      const trailCount = 120;
+      const trailGeo = new THREE.BufferGeometry();
+      const trailPositions = new Float32Array(trailCount * 3);
+      const trailColors = new Float32Array(trailCount * 3);
+      trailGeo.setAttribute('position', new THREE.BufferAttribute(trailPositions, 3));
+      trailGeo.setAttribute('color', new THREE.BufferAttribute(trailColors, 3));
+      const trailMat = new THREE.PointsMaterial({
+        size: 0.12, vertexColors: true, transparent: true, opacity: 0.6,
+        blending: THREE.AdditiveBlending
+      });
+      const trailPoints = new THREE.Points(trailGeo, trailMat);
+      scene.add(trailPoints);
+
+      let trailIdx = 0;
+      const goldC = new THREE.Color(GOLD_COLOR);
+      const silverC = new THREE.Color(SILVER_COLOR);
+
+      // Composer
+      const composer = new EffectComposer(renderer);
+      composer.addPass(new RenderPass(scene, camera));
+      composer.addPass(new UnrealBloomPass(
+        new THREE.Vector2(window.innerWidth, window.innerHeight),
+        1.0, 0.5, 0.3
+      ));
+
+      // Animation state
+      const state = { progress: 0 };
+
+      const tl = gsap.timeline({ paused: true });
+      tl.to(state, { progress: 1, duration: SCENE_DURATION - 0.5, ease: 'power1.inOut' });
+
+      function animate(time) {
+        const t1 = Math.min(state.progress, 1);
+        const t2 = Math.min(Math.max(state.progress - 0.06, 0), 1);
+
+        // Position blocks on curve
+        if (t1 > 0) {
+          const p1 = curve.getPointAt(t1);
+          const tan1 = curve.getTangentAt(t1);
+          goldBlock.position.copy(p1);
+          goldBlock.position.y += 0.6;
+          goldBlock.lookAt(p1.clone().add(tan1));
+          const angle1 = Math.atan2(tan1.y, Math.sqrt(tan1.x * tan1.x + tan1.z * tan1.z));
+          goldBlock.rotation.z = -angle1;
+        }
+
+        if (t2 > 0) {
+          const p2 = curve.getPointAt(t2);
+          const tan2 = curve.getTangentAt(t2);
+          silverBlock.position.copy(p2);
+          silverBlock.position.y += 0.6;
+          silverBlock.lookAt(p2.clone().add(tan2));
+          const angle2 = Math.atan2(tan2.y, Math.sqrt(tan2.x * tan2.x + tan2.z * tan2.z));
+          silverBlock.rotation.z = -angle2;
+        }
+
+        // Trail particles
+        if (t1 > 0.01) {
+          const pg = goldBlock.position;
+          const ps = silverBlock.position;
+          for (let k = 0; k < 2; k++) {
+            const src = k === 0 ? pg : ps;
+            const col = k === 0 ? goldC : silverC;
+            const idx = (trailIdx % trailCount) * 3;
+            trailPositions[idx]     = src.x + (Math.random() - 0.5) * 0.3;
+            trailPositions[idx + 1] = src.y + (Math.random() - 0.5) * 0.3;
+            trailPositions[idx + 2] = src.z + (Math.random() - 0.5) * 0.3;
+            trailColors[idx]     = col.r;
+            trailColors[idx + 1] = col.g;
+            trailColors[idx + 2] = col.b;
+            trailIdx++;
+          }
+          trailGeo.attributes.position.needsUpdate = true;
+          trailGeo.attributes.color.needsUpdate = true;
+        }
+
+        // Camera orbit
+        const camAngle = time * 0.15;
+        camera.position.x = Math.sin(camAngle) * 25;
+        camera.position.z = Math.cos(camAngle) * 25;
+        camera.position.y = 8 + Math.sin(time * 0.3) * 2;
+        camera.lookAt(0, 3, 0);
+      }
+
+      return { scene, camera, composer, timeline: tl, animate, state };
+    }
+
+    /* ============================================================
+       SCENE 2: AIRCRAFT CARRIER VS FISHING BOAT
+    ============================================================ */
+    function buildScene2() {
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x020810);
+      scene.fog = new THREE.FogExp2(0x020810, 0.025);
+
+      const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 200);
+      camera.position.set(15, 8, 15);
+      camera.lookAt(0, 0, 0);
+
+      // Moonlight
+      const moon = new THREE.DirectionalLight(0xaabbdd, 1.0);
+      moon.position.set(5, 20, 5);
+      scene.add(moon);
+      const amb = new THREE.AmbientLight(0x1a2040, 0.5);
+      scene.add(amb);
+      const ptLight = new THREE.PointLight(GOLD_COLOR, 0.5, 40);
+      ptLight.position.set(-3, 5, 0);
+      scene.add(ptLight);
+
+      createStarField(scene, 300, 100);
+
+      // Ocean plane
+      const oceanGeo = new THREE.PlaneGeometry(60, 60, 80, 80);
+      const oceanMat = new THREE.MeshStandardMaterial({
+        color: 0x0a3050, metalness: 0.3, roughness: 0.6,
+        transparent: true, opacity: 0.85, side: THREE.DoubleSide
+      });
+      const ocean = new THREE.Mesh(oceanGeo, oceanMat);
+      ocean.rotation.x = -Math.PI / 2;
+      scene.add(ocean);
+
+      // Aircraft Carrier (Gold) — large hull + tower
+      const carrierGroup = new THREE.Group();
+
+      const hullGeo = new THREE.BoxGeometry(10, 0.8, 2.5);
+      const hull = new THREE.Mesh(hullGeo, goldMat(0.2));
+      hull.position.y = 0.4;
+      carrierGroup.add(hull);
+
+      // Deck
+      const deckGeo = new THREE.BoxGeometry(11, 0.15, 3);
+      const deck = new THREE.Mesh(deckGeo, goldMat(0.15));
+      deck.position.y = 0.85;
+      carrierGroup.add(deck);
+
+      // Tower
+      const towerGeo = new THREE.BoxGeometry(1.2, 2, 1);
+      const tower = new THREE.Mesh(towerGeo, goldMat(0.25));
+      tower.position.set(2, 1.9, 0.5);
+      carrierGroup.add(tower);
+
+      // Antenna
+      const antennaGeo = new THREE.CylinderGeometry(0.03, 0.03, 1.2, 4);
+      const antenna = new THREE.Mesh(antennaGeo, goldMat(0.1));
+      antenna.position.set(2, 3.5, 0.5);
+      carrierGroup.add(antenna);
+
+      carrierGroup.position.set(-3, 0, -2);
+      scene.add(carrierGroup);
+
+      // Fishing Boat (Silver) — small hull + tiny cabin
+      const boatGroup = new THREE.Group();
+
+      const smallHullGeo = new THREE.BoxGeometry(2.2, 0.4, 0.9);
+      const smallHull = new THREE.Mesh(smallHullGeo, silverMat(0.15));
+      smallHull.position.y = 0.2;
+      boatGroup.add(smallHull);
+
+      // Bow taper
+      const bowGeo = new THREE.BoxGeometry(0.6, 0.35, 0.7);
+      const bow = new THREE.Mesh(bowGeo, silverMat(0.15));
+      bow.position.set(1.3, 0.2, 0);
+      bow.rotation.y = 0.2;
+      boatGroup.add(bow);
+
+      // Cabin
+      const cabinGeo = new THREE.BoxGeometry(0.6, 0.5, 0.5);
+      const cabin = new THREE.Mesh(cabinGeo, silverMat(0.2));
+      cabin.position.set(-0.3, 0.65, 0);
+      boatGroup.add(cabin);
+
+      // Mast
+      const mastGeo = new THREE.CylinderGeometry(0.02, 0.02, 1.0, 4);
+      const mast = new THREE.Mesh(mastGeo, silverMat(0.1));
+      mast.position.set(0.4, 0.9, 0);
+      boatGroup.add(mast);
+
+      boatGroup.position.set(5, 0, 3);
+      scene.add(boatGroup);
+
+      // Composer
+      const composer = new EffectComposer(renderer);
+      composer.addPass(new RenderPass(scene, camera));
+      composer.addPass(new UnrealBloomPass(
+        new THREE.Vector2(window.innerWidth, window.innerHeight),
+        0.8, 0.6, 0.35
+      ));
+
+      const state = { entered: 0 };
+      const tl = gsap.timeline({ paused: true });
+      tl.to(state, { entered: 1, duration: 0.01 });
+
+      function animate(time) {
+        // Ocean wave animation
+        const pos = ocean.geometry.attributes.position;
+        for (let i = 0; i < pos.count; i++) {
+          const x = pos.getX(i), y = pos.getY(i);
+          pos.setZ(i, Math.sin(x * 0.5 + time) * 0.3 + Math.sin(y * 0.3 + time * 0.7) * 0.2);
+        }
+        pos.needsUpdate = true;
+
+        // Carrier bob — gentle
+        const carrierBob = Math.sin(time * 0.8) * 0.15;
+        const carrierRoll = Math.sin(time * 0.6) * 0.015;
+        const carrierPitch = Math.sin(time * 0.5 + 1) * 0.01;
+        carrierGroup.position.y = carrierBob;
+        carrierGroup.rotation.z = carrierRoll;
+        carrierGroup.rotation.x = carrierPitch;
+
+        // Fishing boat bob — dramatic
+        const boatBob = Math.sin(time * 1.4) * 0.6 + Math.sin(time * 2.1) * 0.2;
+        const boatRoll = Math.sin(time * 1.2 + 0.5) * 0.12;
+        const boatPitch = Math.sin(time * 1.5 + 2) * 0.08;
+        boatGroup.position.y = boatBob;
+        boatGroup.rotation.z = boatRoll;
+        boatGroup.rotation.x = boatPitch;
+
+        // Camera orbit
+        const camAngle = time * 0.12 + Math.PI * 0.25;
+        camera.position.x = Math.cos(camAngle) * 18;
+        camera.position.z = Math.sin(camAngle) * 18;
+        camera.position.y = 7 + Math.sin(time * 0.2) * 1.5;
+        camera.lookAt(0, 0.5, 0);
+      }
+
+      return { scene, camera, composer, timeline: tl, animate, state };
+    }
+
+    /* ============================================================
+       SCENE 3: CHUNKS ASSEMBLING INTO RINGS
+    ============================================================ */
+    function buildScene3() {
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(BG_COLOR);
+
+      const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 200);
+      camera.position.set(0, 3, 18);
+      camera.lookAt(0, 0, 0);
+
+      addStandardLights(scene);
+      const ptLight2 = new THREE.PointLight(0x6688ff, 0.4, 30);
+      ptLight2.position.set(5, -3, 5);
+      scene.add(ptLight2);
+      createStarField(scene, 300, 60);
+
+      const CHUNKS_PER_RING = 20;
+      const goldChunks = [];
+      const silverChunks = [];
+      const goldTargets = [];
+      const silverTargets = [];
+
+      // Target ring positions (torus)
+      const goldRingCenter = new THREE.Vector3(-3.5, 0, 0);
+      const silverRingCenter = new THREE.Vector3(3.5, 0, 0);
+      const ringRadius = 2.0;
+      const tubeRadius = 0.35;
+
+      function torusPoint(center, idx, total) {
+        const angle = (idx / total) * Math.PI * 2;
+        return new THREE.Vector3(
+          center.x + Math.cos(angle) * ringRadius,
+          center.y + Math.sin(angle) * ringRadius,
+          center.z
+        );
+      }
+
+      // Create chunks
+      for (let i = 0; i < CHUNKS_PER_RING; i++) {
+        const gChunk = new THREE.Mesh(
+          new THREE.IcosahedronGeometry(0.3 + Math.random() * 0.15, 0),
+          goldMat(0.25)
+        );
+        const startPos = new THREE.Vector3(
+          (Math.random() - 0.5) * 16,
+          (Math.random() - 0.5) * 12,
+          (Math.random() - 0.5) * 10
+        );
+        gChunk.position.copy(startPos);
+        gChunk.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+        gChunk.userData.startPos = startPos.clone();
+        gChunk.userData.startRot = gChunk.rotation.clone();
+        scene.add(gChunk);
+        goldChunks.push(gChunk);
+        goldTargets.push(torusPoint(goldRingCenter, i, CHUNKS_PER_RING));
+
+        const sChunk = new THREE.Mesh(
+          new THREE.IcosahedronGeometry(0.3 + Math.random() * 0.15, 0),
+          silverMat(0.2)
+        );
+        const startPos2 = new THREE.Vector3(
+          (Math.random() - 0.5) * 16,
+          (Math.random() - 0.5) * 12,
+          (Math.random() - 0.5) * 10
+        );
+        sChunk.position.copy(startPos2);
+        sChunk.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+        sChunk.userData.startPos = startPos2.clone();
+        sChunk.userData.startRot = sChunk.rotation.clone();
+        scene.add(sChunk);
+        silverChunks.push(sChunk);
+        silverTargets.push(torusPoint(silverRingCenter, i, CHUNKS_PER_RING));
+      }
+
+      // Particle burst system (hidden initially)
+      const burstCount = 200;
+      const burstGeo = new THREE.BufferGeometry();
+      const burstPositions = new Float32Array(burstCount * 3);
+      const burstVelocities = [];
+      const burstColors = new Float32Array(burstCount * 3);
+      const gCol = new THREE.Color(GOLD_COLOR);
+      const sCol = new THREE.Color(SILVER_COLOR);
+      for (let i = 0; i < burstCount; i++) {
+        const isGold = i < burstCount / 2;
+        const center = isGold ? goldRingCenter : silverRingCenter;
+        burstPositions[i * 3] = center.x;
+        burstPositions[i * 3 + 1] = center.y;
+        burstPositions[i * 3 + 2] = center.z;
+        burstVelocities.push(new THREE.Vector3(
+          (Math.random() - 0.5) * 8,
+          (Math.random() - 0.5) * 8,
+          (Math.random() - 0.5) * 8
+        ));
+        const c = isGold ? gCol : sCol;
+        burstColors[i * 3] = c.r;
+        burstColors[i * 3 + 1] = c.g;
+        burstColors[i * 3 + 2] = c.b;
+      }
+      burstGeo.setAttribute('position', new THREE.BufferAttribute(burstPositions, 3));
+      burstGeo.setAttribute('color', new THREE.BufferAttribute(burstColors, 3));
+      const burstMat = new THREE.PointsMaterial({
+        size: 0.1, vertexColors: true, transparent: true, opacity: 0,
+        blending: THREE.AdditiveBlending
+      });
+      const burstParticles = new THREE.Points(burstGeo, burstMat);
+      scene.add(burstParticles);
+
+      // Composer
+      const composer = new EffectComposer(renderer);
+      composer.addPass(new RenderPass(scene, camera));
+      composer.addPass(new UnrealBloomPass(
+        new THREE.Vector2(window.innerWidth, window.innerHeight),
+        1.2, 0.5, 0.25
+      ));
+
+      // Timeline
+      const state = { assembleProgress: 0, burstTime: -1 };
+      const tl = gsap.timeline({ paused: true });
+
+      // Animate each chunk to target
+      goldChunks.forEach((chunk, i) => {
+        const target = goldTargets[i];
+        const delay = Math.random() * 0.3;
+        tl.to(chunk.position, {
+          x: target.x, y: target.y, z: target.z,
+          duration: 2.5, ease: 'power2.inOut'
+        }, delay);
+        tl.to(chunk.rotation, {
+          x: 0, y: 0, z: (i / CHUNKS_PER_RING) * Math.PI * 2,
+          duration: 2.5, ease: 'power2.inOut'
+        }, delay);
+      });
+
+      silverChunks.forEach((chunk, i) => {
+        const target = silverTargets[i];
+        const delay = Math.random() * 0.3;
+        tl.to(chunk.position, {
+          x: target.x, y: target.y, z: target.z,
+          duration: 2.5, ease: 'power2.inOut'
+        }, delay);
+        tl.to(chunk.rotation, {
+          x: 0, y: 0, z: (i / CHUNKS_PER_RING) * Math.PI * 2,
+          duration: 2.5, ease: 'power2.inOut'
+        }, delay);
+      });
+
+      // Burst trigger
+      tl.to(state, { burstTime: 0, duration: 0.01 }, 2.8);
+      tl.to(burstMat, { opacity: 0.9, duration: 0.2 }, 2.8);
+      tl.to(burstMat, { opacity: 0, duration: 1.5 }, 3.3);
+
+      function animate(time) {
+        // Camera orbit
+        const camAngle = time * 0.2;
+        camera.position.x = Math.sin(camAngle) * 16;
+        camera.position.z = Math.cos(camAngle) * 16;
+        camera.position.y = 3 + Math.sin(time * 0.3) * 2;
+        camera.lookAt(0, 0, 0);
+
+        // After assembly, rotate rings
+        const tlProg = tl.progress();
+        if (tlProg > 0.5) {
+          const rotSpeed = (tlProg - 0.5) * 2 * time * 0.5;
+          goldChunks.forEach((chunk, i) => {
+            const angle = (i / CHUNKS_PER_RING) * Math.PI * 2 + rotSpeed;
+            chunk.position.x = goldRingCenter.x + Math.cos(angle) * ringRadius;
+            chunk.position.y = goldRingCenter.y + Math.sin(angle) * ringRadius;
+          });
+          silverChunks.forEach((chunk, i) => {
+            const angle = (i / CHUNKS_PER_RING) * Math.PI * 2 - rotSpeed;
+            chunk.position.x = silverRingCenter.x + Math.cos(angle) * ringRadius;
+            chunk.position.y = silverRingCenter.y + Math.sin(angle) * ringRadius;
+          });
+        }
+
+        // Burst particles expansion
+        if (state.burstTime >= 0) {
+          const bt = time - (state.burstTime > 0 ? state.burstTime : time);
+          if (state.burstTime === 0) state.burstTime = time;
+          const elapsed = time - state.burstTime;
+          const bPos = burstGeo.attributes.position;
+          for (let i = 0; i < burstCount; i++) {
+            const isGold = i < burstCount / 2;
+            const center = isGold ? goldRingCenter : silverRingCenter;
+            bPos.setXYZ(i,
+              center.x + burstVelocities[i].x * elapsed,
+              center.y + burstVelocities[i].y * elapsed,
+              center.z + burstVelocities[i].z * elapsed
+            );
+          }
+          bPos.needsUpdate = true;
+        }
+      }
+
+      return { scene, camera, composer, timeline: tl, animate, state };
+    }
+
+    /* ============================================================
+       SCENE MANAGEMENT
+    ============================================================ */
+    function initScenes() {
+      scenes[0] = buildScene1();
+      scenes[1] = buildScene2();
+      scenes[2] = buildScene3();
+    }
+
+    function activateScene(idx) {
+      currentSceneIdx = idx;
+      const s = scenes[idx];
+      activeScene = s.scene;
+      activeCamera = s.camera;
+      activeComposer = s.composer;
+      sceneTimeline = s.timeline;
+      animateCallback = s.animate;
+      sceneTime = 0;
+
+      // Reset timeline
+      sceneTimeline.restart();
+      if (paused) sceneTimeline.pause();
+
+      // Update button states
+      document.querySelectorAll('#ui button[data-scene]').forEach(btn => {
+        btn.classList.toggle('active', parseInt(btn.dataset.scene) === idx);
+      });
+    }
+
+    function switchScene(idx) {
+      const overlay = document.getElementById('overlay');
+      const label = document.getElementById('scene-label');
+
+      overlay.style.opacity = '1';
+      label.textContent = sceneNames[idx];
+      label.style.opacity = '1';
+
+      setTimeout(() => {
+        // Rebuild scene to reset state
+        scenes[idx] = [buildScene1, buildScene2, buildScene3][idx]();
+        activateScene(idx);
+        onResize();
+
+        setTimeout(() => {
+          overlay.style.opacity = '0';
+          setTimeout(() => { label.style.opacity = '0'; }, 300);
+        }, 400);
+      }, 450);
+    }
+
+    /* ============================================================
+       RESIZE
+    ============================================================ */
+    function onResize() {
+      const W = window.innerWidth, H = window.innerHeight;
+      renderer.setSize(W, H);
+      scenes.forEach(s => {
+        s.camera.aspect = W / H;
+        s.camera.updateProjectionMatrix();
+        s.composer.setSize(W, H);
+      });
+    }
+    window.addEventListener('resize', onResize);
+
+    /* ============================================================
+       RENDER LOOP
+    ============================================================ */
+    let lastTime = 0;
+    const timerEl = document.getElementById('timer');
+
+    function render() {
+      requestAnimationFrame(render);
+
+      const delta = globalClock.getDelta();
+      if (!paused) {
+        sceneTime += delta;
+      }
+
+      timerEl.textContent = sceneTime.toFixed(2) + 's';
+
+      if (animateCallback) {
+        animateCallback(sceneTime);
+      }
+      if (!paused && sceneTimeline) {
+        // timeline is controlled by GSAP internally
+      }
+
+      if (activeComposer) {
+        activeComposer.render();
+      }
+    }
+
+    /* ============================================================
+       CONTROLS
+    ============================================================ */
+    document.getElementById('btn-pp').addEventListener('click', () => {
+      paused = !paused;
+      document.getElementById('btn-pp').innerHTML = paused ? '&#9654; Play' : '&#9208; Pause';
+      if (sceneTimeline) {
+        paused ? sceneTimeline.pause() : sceneTimeline.resume();
+      }
+      if (paused) globalClock.stop(); else globalClock.start();
+    });
+
+    document.getElementById('btn-restart').addEventListener('click', () => {
+      switchScene(currentSceneIdx);
+    });
+
+    document.querySelectorAll('#ui button[data-scene]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const idx = parseInt(btn.dataset.scene);
+        if (idx !== currentSceneIdx) {
+          switchScene(idx);
+        }
+      });
+    });
+
+    /* ============================================================
+       INIT
+    ============================================================ */
+    initScenes();
+    activateScene(0);
+    onResize();
+    render();
+
+  </script>
+</body>
+</html>
