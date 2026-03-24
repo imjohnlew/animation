@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Flowchart Animation</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #000; overflow: hidden; font-family: sans-serif; }
+    canvas { display: block; }
+    #ui {
+      position: fixed; bottom: 20px; left: 50%;
+      transform: translateX(-50%);
+      display: flex; gap: 8px; z-index: 10;
+    }
+    #ui button {
+      padding: 7px 20px;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.2);
+      color: white; cursor: pointer;
+      border-radius: 6px; font-size: 13px;
+      transition: background 0.15s;
+    }
+    #ui button:hover { background: rgba(255,255,255,0.18); }
+    #ui button.active {
+      background: rgba(200,160,0,0.25);
+      border-color: rgba(200,160,0,0.6);
+      color: #f5d05a;
+    }
+    #timer {
+      position: fixed; top: 12px; left: 12px;
+      color: rgba(255,255,255,0.35);
+      font-size: 11px; font-family: monospace; z-index: 10;
+    }
+    #hint {
+      position: fixed; top: 12px; right: 12px;
+      color: rgba(255,255,255,0.25);
+      font-size: 11px; font-family: monospace;
+      text-align: right; line-height: 1.6; z-index: 10;
+    }
+  </style>
+</head>
+<body>
+  <div id="ui">
+    <button id="btn-s1" class="active">Market Drivers</button>
+    <button id="btn-s2">Investor Types</button>
+    <button id="btn-s3">Collapse Triggers</button>
+    <button id="btn-restart">↺ Restart</button>
+    <button id="btn-pp">⏸ Pause</button>
+  </div>
+  <div id="timer">0.00s</div>
+  <div id="hint">Record with OBS<br>1920×1080 recommended</div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"
+    }
+  }
+  </script>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+    import { RenderPass }     from 'three/addons/postprocessing/RenderPass.js';
+    import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+    // ── Scene data ──────────────────────────────────────────
+    const SCENES = [
+      {
+        id: 'market-drivers',
+        center: { text: '市场驱动', sub: 'Market Drivers' },
+        branches: [
+          {
+            text: '短期因素', sub: 'Short-Term Factors', color: '#2a5cc8',
+            children: [
+              { text: '降息预期', sub: 'Rate Cut Expectations' },
+              { text: '地缘风险', sub: 'Geopolitical Risk' },
+              { text: '美元走弱', sub: 'Weak Dollar' },
+            ]
+          },
+          {
+            text: '长期因素', sub: 'Long-Term Factors', color: '#b8321a',
+            children: [
+              { text: '央行购金', sub: 'Central Bank Buying' },
+              { text: '去美元化', sub: 'De-dollarization' },
+              { text: '通胀对冲', sub: 'Inflation Hedge' },
+            ]
+          },
+        ]
+      },
+      {
+        id: 'investor-types',
+        center: { text: '投资者类型', sub: 'Investor Types' },
+        branches: [
+          { text: '央行', sub: 'Central Banks', color: '#c8a000', children: [] },
+          { text: '机构', sub: 'Institutions', color: '#2a8cc8', children: [] },
+          { text: '散户', sub: 'Retail', color: '#2ac85a', children: [] },
+          { text: 'ETF基金', sub: 'ETF Funds', color: '#c83a6a', children: [] },
+        ]
+      },
+      {
+        id: 'collapse-triggers',
+        center: { text: '崩盘触发', sub: 'Collapse Triggers' },
+        branches: [
+          { text: '利率上升', sub: 'Rising Rates', color: '#c8342a', children: [] },
+          { text: '美元反弹', sub: 'Dollar Rebound', color: '#2a6cc8', children: [] },
+          { text: '流动性危机', sub: 'Liquidity Crisis', color: '#8a2ac8', children: [] },
+          { text: '监管打击', sub: 'Regulatory Crackdown', color: '#c87a2a', children: [] },
+        ]
+      },
+    ];
+
+    // ── Constants ────────────────────────────────────────────
+    const CAM_H = 20;
+    const CAM_W = CAM_H * (16 / 9);
+    const PPU   = 110;
+
+    // ── Renderer ────────────────────────────────────────────
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    document.body.appendChild(renderer.domElement);
+
+    const scene  = new THREE.Scene();
+    scene.background = new THREE.Color('#05050f');
+
+    const camera = new THREE.OrthographicCamera(
+      -CAM_W/2, CAM_W/2, CAM_H/2, -CAM_H/2, -100, 100
+    );
+
+    const composer = new EffectComposer(renderer);
+    composer.addPass(new RenderPass(scene, camera));
+    composer.addPass(new UnrealBloomPass(
+      new THREE.Vector2(window.innerWidth, window.innerHeight),
+      0.85, 0.5, 0.28
+    ));
+
+    function onResize() {
+      const W = window.innerWidth, H = window.innerHeight;
+      renderer.setSize(W, H);
+      composer.setSize(W, H);
+      const winAR = W / H, camAR = CAM_W / CAM_H;
+      if (winAR >= camAR) {
+        const s = winAR / camAR;
+        camera.left = -CAM_W/2*s; camera.right = CAM_W/2*s;
+        camera.top  =  CAM_H/2;   camera.bottom = -CAM_H/2;
+      } else {
+        const s = camAR / winAR;
+        camera.left = -CAM_W/2;  camera.right =  CAM_W/2;
+        camera.top  =  CAM_H/2*s; camera.bottom = -CAM_H/2*s;
+      }
+      camera.updateProjectionMatrix();
+    }
+    window.addEventListener('resize', onResize);
+    onResize();
+
+    // ── Helpers ──────────────────────────────────────────────
+    function tex(wU, hU, fn) {
+      const W = Math.round(wU * PPU), H = Math.round(hU * PPU);
+      const cv = document.createElement('canvas');
+      cv.width = W; cv.height = H;
+      fn(cv.getContext('2d'), W, H);
+      return new THREE.CanvasTexture(cv);
+    }
+
+    function makeMesh(wU, hU, t, z = 0) {
+      const mat = new THREE.MeshBasicMaterial({
+        map: t, transparent: true, depthWrite: false, opacity: 0
+      });
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(wU, hU), mat);
+      m.position.z = z;
+      return m;
+    }
+
+    function rrect(ctx, x, y, w, h, r) {
+      ctx.beginPath();
+      ctx.moveTo(x+r, y);
+      ctx.arcTo(x+w, y,   x+w, y+h, r);
+      ctx.arcTo(x+w, y+h, x,   y+h, r);
+      ctx.arcTo(x,   y+h, x,   y,   r);
+      ctx.arcTo(x,   y,   x+w, y,   r);
+      ctx.closePath();
+    }
+
+    // ── Particles ───────────────────────────────────────────
+    const N = 400;
+    const pPos = new Float32Array(N * 3);
+    const pCol = new Float32Array(N * 3);
+    const pVel = [];
+    const palette = [[1,.84,0],[1,1,1],[.8,.65,.1],[1,.92,.55]];
+
+    for (let i = 0; i < N; i++) {
+      pPos[i*3]   = (Math.random()-.5) * CAM_W * 1.1;
+      pPos[i*3+1] = (Math.random()-.5) * CAM_H * 1.1;
+      pPos[i*3+2] = -2 - Math.random()*3;
+      const c = palette[i % palette.length];
+      pCol[i*3]=c[0]; pCol[i*3+1]=c[1]; pCol[i*3+2]=c[2];
+      pVel.push({ dx:(Math.random()-.5)*.006, dy:Math.random()*.004+.002 });
+    }
+
+    const pGeo = new THREE.BufferGeometry();
+    pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
+    pGeo.setAttribute('color',    new THREE.BufferAttribute(pCol, 3));
+    const pMat = new THREE.PointsMaterial({
+      size:.07, vertexColors:true, transparent:true, opacity:.5,
+      blending:THREE.AdditiveBlending, depthWrite:false,
+    });
+    scene.add(new THREE.Points(pGeo, pMat));
+
+    function tickParticles() {
+      for (let i=0; i<N; i++) {
+        pPos[i*3]   += pVel[i].dx;
+        pPos[i*3+1] += pVel[i].dy;
+        if (pPos[i*3+1] >  CAM_H*.6) pPos[i*3+1] = -CAM_H*.6;
+        if (pPos[i*3]   >  CAM_W*.6) pPos[i*3]   = -CAM_W*.6;
+        if (pPos[i*3]   < -CAM_W*.6) pPos[i*3]   =  CAM_W*.6;
+      }
+      pGeo.attributes.position.needsUpdate = true;
+      pMat.opacity = .38 + Math.sin(Date.now()*.0008)*.12;
+    }
+
+    // ── Vignette ────────────────────────────────────────────
+    {
+      const W=CAM_W*1.4, H=CAM_H*1.4;
+      const t = tex(W, H, (ctx, w, h) => {
+        const g = ctx.createRadialGradient(w/2,h/2,h*.12,w/2,h/2,h*.72);
+        g.addColorStop(0,'rgba(0,0,0,0)'); g.addColorStop(1,'rgba(0,0,0,.65)');
+        ctx.fillStyle=g; ctx.fillRect(0,0,w,h);
+      });
+      const m = makeMesh(W, H, t, 5);
+      m.material.opacity = 1;
+      scene.add(m);
+    }
+
+    // ── Node creation ───────────────────────────────────────
+    function createNodeTex(text, sub, isCenter, accentColor) {
+      const wU = isCenter ? 6 : 5;
+      const hU = isCenter ? 2.4 : 1.8;
+      const accent = accentColor || '#c8a000';
+
+      const t = tex(wU, hU, (ctx, w, h) => {
+        const r = h * 0.25;
+        rrect(ctx, 0, 0, w, h, r);
+
+        if (isCenter) {
+          const g = ctx.createLinearGradient(0, 0, 0, h);
+          g.addColorStop(0, '#f5d05a'); g.addColorStop(1, '#b8860b');
+          ctx.fillStyle = g;
+          ctx.fill();
+          rrect(ctx, 3, 3, w-6, h-6, r-2);
+          ctx.strokeStyle = 'rgba(255,240,160,.5)';
+          ctx.lineWidth = 2; ctx.stroke();
+          ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          ctx.fillStyle = '#1a0d00';
+          ctx.font = `bold ${h*.32}px serif`;
+          ctx.fillText(text, w/2, h*.42);
+          ctx.fillStyle = '#3a2000';
+          ctx.font = `${h*.14}px sans-serif`;
+          ctx.fillText(sub, w/2, h*.73);
+        } else {
+          // dark filled node with accent border
+          const bg = ctx.createLinearGradient(0,0,w,h);
+          bg.addColorStop(0, '#0a0a18'); bg.addColorStop(1, '#12122a');
+          ctx.fillStyle = bg; ctx.fill();
+
+          rrect(ctx, 0, 0, w, h, r);
+          ctx.strokeStyle = accent;
+          ctx.lineWidth = 3; ctx.stroke();
+
+          // top highlight
+          rrect(ctx, 0, 0, w, h, r);
+          const hl = ctx.createLinearGradient(0,0,0,h*.3);
+          hl.addColorStop(0, 'rgba(255,255,255,.08)');
+          hl.addColorStop(1, 'rgba(255,255,255,0)');
+          ctx.fillStyle = hl; ctx.fill();
+
+          ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          ctx.fillStyle = '#fff';
+          ctx.font = `bold ${h*.3}px serif`;
+          ctx.fillText(text, w/2, h*.4);
+          ctx.fillStyle = 'rgba(255,255,255,.6)';
+          ctx.font = `${h*.15}px sans-serif`;
+          ctx.fillText(sub, w/2, h*.74);
+        }
+      });
+
+      return { texture: t, wU, hU };
+    }
+
+    // ── Animated line ───────────────────────────────────────
+    function createAnimatedLine(x1, y1, x2, y2, color) {
+      // We'll create a line with many segments and reveal via drawRange
+      const segments = 60;
+      const positions = new Float32Array((segments + 1) * 3);
+      for (let i = 0; i <= segments; i++) {
+        const t = i / segments;
+        positions[i*3]   = x1 + (x2 - x1) * t;
+        positions[i*3+1] = y1 + (y2 - y1) * t;
+        positions[i*3+2] = 0.05;
+      }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      geo.setDrawRange(0, 0);
+
+      const c = new THREE.Color(color || '#c8a000');
+      const mat = new THREE.LineBasicMaterial({
+        color: c,
+        transparent: true,
+        opacity: 0.8,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      });
+
+      const line = new THREE.Line(geo, mat);
+      line.userData.segments = segments;
+      return line;
+    }
+
+    // ── Build a flowchart scene ─────────────────────────────
+    let currentGroup = null;
+    let currentTimeline = null;
+    let pulseTimelines = [];
+
+    function clearCurrentScene() {
+      // Kill all pulse timelines
+      pulseTimelines.forEach(pt => pt.kill());
+      pulseTimelines = [];
+
+      if (currentTimeline) {
+        currentTimeline.kill();
+        currentTimeline = null;
+      }
+      if (currentGroup) {
+        scene.remove(currentGroup);
+        // Dispose geometries and materials
+        currentGroup.traverse(obj => {
+          if (obj.geometry) obj.geometry.dispose();
+          if (obj.material) {
+            if (obj.material.map) obj.material.map.dispose();
+            obj.material.dispose();
+          }
+        });
+        currentGroup = null;
+      }
+    }
+
+    function buildFlowchart(sceneData) {
+      clearCurrentScene();
+
+      const group = new THREE.Group();
+      scene.add(group);
+      currentGroup = group;
+
+      const tl = gsap.timeline({ paused: true });
+      currentTimeline = tl;
+
+      const allNodes = []; // for pulse animation
+
+      // ── Central node ──────────────────────────
+      const centerInfo = createNodeTex(sceneData.center.text, sceneData.center.sub, true);
+      const centerMesh = makeMesh(centerInfo.wU, centerInfo.hU, centerInfo.texture, 1);
+      centerMesh.position.set(0, 0, 1);
+      centerMesh.scale.set(0.3, 0.3, 1);
+      group.add(centerMesh);
+      allNodes.push(centerMesh);
+
+      // Central node entrance
+      tl.to(centerMesh.material, { opacity: 1, duration: 0.4, ease: 'power2.out' }, 0.2);
+      tl.to(centerMesh.scale, { x: 1, y: 1, duration: 0.5, ease: 'back.out(1.7)' }, 0.2);
+
+      const branches = sceneData.branches;
+      const branchCount = branches.length;
+      const lines = [];
+      const childMeshes = [];
+
+      // Layout: position branches around center
+      branches.forEach((branch, bi) => {
+        let bx, by;
+        if (branchCount === 2) {
+          // Left/right split
+          bx = bi === 0 ? -8 : 8;
+          by = 0;
+        } else if (branchCount === 4) {
+          // Four directions - fan arrangement
+          const angles = [-0.6, -0.2, 0.2, 0.6]; // spread in radians from top
+          const radius = 7;
+          bx = Math.sin(angles[bi] * Math.PI) * radius;
+          by = -Math.cos(angles[bi] * Math.PI) * radius * 0.55;
+          // Shift up a bit
+          by += 1;
+        }
+
+        const branchInfo = createNodeTex(branch.text, branch.sub, false, branch.color);
+        const branchMesh = makeMesh(branchInfo.wU, branchInfo.hU, branchInfo.texture, 0.5);
+        branchMesh.position.set(bx, by, 0.5);
+        branchMesh.scale.set(0.3, 0.3, 1);
+        group.add(branchMesh);
+        allNodes.push(branchMesh);
+        childMeshes.push(branchMesh);
+
+        // Connection line from center to branch
+        const line = createAnimatedLine(0, 0, bx, by, branch.color || '#c8a000');
+        group.add(line);
+        lines.push(line);
+
+        // Animate line drawing at 0.6s
+        const drawObj = { progress: 0 };
+        tl.to(drawObj, {
+          progress: 1, duration: 0.5, ease: 'power2.inOut',
+          onUpdate: () => {
+            line.geometry.setDrawRange(0, Math.floor(drawObj.progress * (line.userData.segments + 1)));
+          }
+        }, 0.6 + bi * 0.08);
+
+        // Branch node entrance at 0.8s staggered
+        tl.to(branchMesh.material, { opacity: 1, duration: 0.35, ease: 'power2.out' }, 0.8 + bi * 0.12);
+        tl.to(branchMesh.scale, { x: 1, y: 1, duration: 0.4, ease: 'back.out(1.4)' }, 0.8 + bi * 0.12);
+
+        // Second-level children
+        if (branch.children && branch.children.length > 0) {
+          branch.children.forEach((child, ci) => {
+            const childCount = branch.children.length;
+            // Position children in a vertical column offset from branch
+            const cx = bx + (bx < 0 ? -5.5 : 5.5);
+            const spread = 2.8;
+            const cy = by + (ci - (childCount - 1) / 2) * spread;
+
+            const childInfo = createNodeTex(child.text, child.sub, false, branch.color);
+            const childMesh = makeMesh(childInfo.wU, childInfo.hU, childInfo.texture, 0.3);
+            childMesh.position.set(cx, cy, 0.3);
+            childMesh.scale.set(0.3, 0.3, 1);
+            group.add(childMesh);
+            allNodes.push(childMesh);
+
+            // Line from branch to child
+            const childLine = createAnimatedLine(bx, by, cx, cy, branch.color || '#c8a000');
+            group.add(childLine);
+            lines.push(childLine);
+
+            // Animate child line at 1.2s
+            const cDrawObj = { progress: 0 };
+            tl.to(cDrawObj, {
+              progress: 1, duration: 0.4, ease: 'power2.inOut',
+              onUpdate: () => {
+                childLine.geometry.setDrawRange(0, Math.floor(cDrawObj.progress * (childLine.userData.segments + 1)));
+              }
+            }, 1.2 + ci * 0.08);
+
+            // Child node entrance at 1.4s staggered
+            tl.to(childMesh.material, { opacity: 1, duration: 0.3, ease: 'power2.out' }, 1.4 + ci * 0.12);
+            tl.to(childMesh.scale, { x: 1, y: 1, duration: 0.35, ease: 'back.out(1.3)' }, 1.4 + ci * 0.12);
+          });
+        }
+      });
+
+      // ── Pulse glow on all nodes after entrance ──────
+      tl.call(() => {
+        allNodes.forEach(node => {
+          const pt = gsap.timeline({ repeat: -1, yoyo: true });
+          pt.to(node.scale, {
+            x: 1.04, y: 1.04, duration: 1.2 + Math.random() * 0.5,
+            ease: 'sine.inOut'
+          });
+          pulseTimelines.push(pt);
+        });
+
+        // Pulse line opacity
+        lines.forEach(line => {
+          const pt = gsap.timeline({ repeat: -1, yoyo: true });
+          pt.to(line.material, {
+            opacity: 1, duration: 1.0 + Math.random() * 0.8,
+            ease: 'sine.inOut'
+          });
+          pt.to(line.material, {
+            opacity: 0.5, duration: 1.0 + Math.random() * 0.8,
+            ease: 'sine.inOut'
+          });
+          pulseTimelines.push(pt);
+        });
+      }, null, null, 2.2);
+
+      return tl;
+    }
+
+    // ── Scene switching ─────────────────────────────────────
+    let currentSceneIndex = 0;
+    let playing = true;
+
+    function switchToScene(idx) {
+      currentSceneIndex = idx;
+
+      // Fade out existing
+      if (currentGroup) {
+        const oldGroup = currentGroup;
+        const oldTl = currentTimeline;
+        const oldPulses = [...pulseTimelines];
+
+        // Create fade out timeline
+        const fadeOut = gsap.timeline({
+          onComplete: () => {
+            oldPulses.forEach(pt => pt.kill());
+            if (oldTl) oldTl.kill();
+            scene.remove(oldGroup);
+            oldGroup.traverse(obj => {
+              if (obj.geometry) obj.geometry.dispose();
+              if (obj.material) {
+                if (obj.material.map) obj.material.map.dispose();
+                obj.material.dispose();
+              }
+            });
+
+            // Build new scene
+            currentGroup = null;
+            currentTimeline = null;
+            pulseTimelines = [];
+            const tl = buildFlowchart(SCENES[idx]);
+            playing = true;
+            ppBtn.textContent = '⏸ Pause';
+            tl.play();
+          }
+        });
+
+        oldPulses.forEach(pt => pt.kill());
+        pulseTimelines = [];
+
+        oldGroup.traverse(obj => {
+          if (obj.material && obj.material.opacity !== undefined) {
+            fadeOut.to(obj.material, { opacity: 0, duration: 0.3 }, 0);
+          }
+        });
+        // Also scale down
+        oldGroup.children.forEach(child => {
+          if (child.isMesh) {
+            fadeOut.to(child.scale, { x: 0.5, y: 0.5, duration: 0.3, ease: 'power2.in' }, 0);
+          }
+        });
+      } else {
+        const tl = buildFlowchart(SCENES[idx]);
+        playing = true;
+        ppBtn.textContent = '⏸ Pause';
+        tl.play();
+      }
+
+      // Update button states
+      [btnS1, btnS2, btnS3].forEach((btn, i) => {
+        btn.classList.toggle('active', i === idx);
+      });
+    }
+
+    // ── Controls ────────────────────────────────────────────
+    const btnS1 = document.getElementById('btn-s1');
+    const btnS2 = document.getElementById('btn-s2');
+    const btnS3 = document.getElementById('btn-s3');
+    const ppBtn = document.getElementById('btn-pp');
+
+    btnS1.addEventListener('click', () => switchToScene(0));
+    btnS2.addEventListener('click', () => switchToScene(1));
+    btnS3.addEventListener('click', () => switchToScene(2));
+
+    document.getElementById('btn-restart').addEventListener('click', () => {
+      if (currentTimeline) {
+        pulseTimelines.forEach(pt => pt.kill());
+        pulseTimelines = [];
+        // Rebuild same scene from scratch
+        const idx = currentSceneIndex;
+        clearCurrentScene();
+        const tl = buildFlowchart(SCENES[idx]);
+        playing = true;
+        ppBtn.textContent = '⏸ Pause';
+        tl.play();
+      }
+    });
+
+    ppBtn.addEventListener('click', () => {
+      playing = !playing;
+      if (currentTimeline) {
+        playing ? currentTimeline.play() : currentTimeline.pause();
+      }
+      pulseTimelines.forEach(pt => {
+        playing ? pt.play() : pt.pause();
+      });
+      ppBtn.textContent = playing ? '⏸ Pause' : '▶ Play';
+    });
+
+    // ── Render loop ─────────────────────────────────────────
+    const timerEl = document.getElementById('timer');
+    (function animate() {
+      requestAnimationFrame(animate);
+      tickParticles();
+      if (currentTimeline) {
+        timerEl.textContent = currentTimeline.time().toFixed(2) + 's';
+      }
+      composer.render();
+    })();
+
+    // ── Initial scene ───────────────────────────────────────
+    switchToScene(0);
+  </script>
+</body>
+</html>
