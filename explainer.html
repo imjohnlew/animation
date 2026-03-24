@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>Explainer Motion Graphics</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:#05050f;overflow:hidden;font-family:'Inter',-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:#fff}
+
+  /* ── Background ── */
+  #bg-canvas{position:fixed;inset:0;z-index:0}
+  #vignette{position:fixed;inset:0;z-index:1;pointer-events:none;
+    background:radial-gradient(ellipse at center,transparent 40%,rgba(5,5,15,0.85) 100%)}
+
+  /* ── Scenes ── */
+  .scene{position:fixed;inset:0;z-index:5;display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none}
+  .scene.active{pointer-events:auto}
+
+  /* ── Scene 1: Blockchain ── */
+  #scene1-wrap{position:relative;width:900px;height:600px}
+  #scene1-svg{width:100%;height:100%;position:absolute;inset:0}
+  .device-rect{fill:rgba(20,20,40,0.9);stroke:rgba(200,160,0,0.5);stroke-width:1.5;rx:6}
+  .device-screen{fill:rgba(100,200,255,0.12);rx:3}
+  .conn-line{stroke:rgba(200,160,0,0.35);stroke-width:1.2;fill:none}
+  .hub-circle{fill:none;stroke:rgba(255,215,0,0.6);stroke-width:2}
+  .hub-inner{fill:rgba(255,215,0,0.15)}
+  .coin-circle{stroke-width:1.5}
+  .coin-text{font-size:10px;font-weight:700;text-anchor:middle;dominant-baseline:central}
+  #s1-title{position:absolute;bottom:20px;left:50%;transform:translateX(-50%);text-align:center}
+  #s1-title h2{font-size:2.6rem;font-weight:800;letter-spacing:0.15em;
+    background:linear-gradient(180deg,#fff 0%,#e8e8e8 40%,#999 100%);
+    -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+    filter:drop-shadow(2px 3px 4px rgba(0,0,0,0.6))}
+  #s1-title p{color:rgba(190,155,80,0.72);font-size:0.85rem;font-style:italic;margin-top:4px}
+
+  /* ── Scene 2: Typography ── */
+  #scene2-wrap{text-align:center;position:relative}
+  .term-block{position:relative;display:inline-block;margin-bottom:40px}
+  .term-bg{position:absolute;inset:-18px -40px;border-radius:12px;transform:scaleX(0);transform-origin:left}
+  .term-main{font-size:5.5rem;font-weight:900;letter-spacing:0.2em;position:relative;z-index:2;opacity:0;transform:scale(0.3)}
+  .term-en{font-size:1.4rem;font-weight:600;letter-spacing:0.3em;color:rgba(255,255,255,0.85);position:relative;z-index:2;margin-top:8px}
+  .term-en span{opacity:0;display:inline-block}
+  .term-def{font-size:1rem;color:rgba(255,255,255,0.55);margin-top:12px;position:relative;z-index:2;opacity:0}
+  #term2-block{opacity:0}
+
+  /* ── Scene 3: Cards ── */
+  #scene3-wrap{display:flex;gap:50px;align-items:stretch}
+  .country-card{width:380px;background:rgba(12,12,25,0.92);border-radius:16px;overflow:hidden;
+    position:relative;border:1px solid rgba(200,160,0,0.25);
+    box-shadow:0 0 40px rgba(0,0,0,0.5)}
+  .card-stripe{height:8px;position:relative;overflow:hidden}
+  .card-stripe-inner{position:absolute;inset:0}
+  .china-stripe{background:linear-gradient(90deg,#de2910 60%,#ffde00 60%)}
+  .india-stripe{background:linear-gradient(90deg,#FF9933 33%,#fff 33%,#fff 66%,#138808 66%)}
+  .card-body{padding:32px 28px 28px}
+  .card-country{font-size:2.4rem;font-weight:800;letter-spacing:0.12em;margin-bottom:4px}
+  .card-country-en{font-size:0.8rem;color:rgba(255,255,255,0.4);letter-spacing:0.2em;margin-bottom:24px}
+  .stat-row{display:flex;justify-content:space-between;align-items:baseline;
+    padding:14px 0;border-bottom:1px solid rgba(255,255,255,0.06)}
+  .stat-label{font-size:0.85rem;color:rgba(255,255,255,0.5)}
+  .stat-value{font-size:1.6rem;font-weight:700;font-variant-numeric:tabular-nums}
+  .stat-unit{font-size:0.7rem;color:rgba(255,255,255,0.35);margin-left:4px}
+  .china-card{border-color:rgba(212,61,106,0.35);box-shadow:0 0 50px rgba(212,61,106,0.12)}
+  .china-card .card-country{color:#f06090}
+  .china-card .stat-value{color:#f06090}
+  .india-card{border-color:rgba(255,153,51,0.35);box-shadow:0 0 50px rgba(255,153,51,0.12)}
+  .india-card .card-country{color:#FF9933}
+  .india-card .stat-value{color:#FF9933}
+
+  /* ── Controls ── */
+  #ui{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);display:flex;gap:10px;z-index:100}
+  #ui button{padding:8px 22px;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.18);
+    color:#fff;cursor:pointer;border-radius:8px;font-size:13px;transition:background 0.15s,border-color 0.15s}
+  #ui button:hover{background:rgba(255,255,255,0.15);border-color:rgba(255,215,0,0.4)}
+  #ui button.active-dot{border-color:rgba(255,215,0,0.7);background:rgba(255,215,0,0.12)}
+  #timer{position:fixed;top:14px;left:14px;color:rgba(255,255,255,0.3);font-size:11px;font-family:monospace;z-index:100}
+  #scene-label{position:fixed;top:14px;right:14px;color:rgba(190,155,80,0.5);font-size:11px;font-family:monospace;z-index:100;text-align:right}
+</style>
+</head>
+<body>
+
+<canvas id="bg-canvas"></canvas>
+<div id="vignette"></div>
+
+<!-- ════════════════ SCENE 1: Blockchain ════════════════ -->
+<div class="scene" id="scene1">
+  <div id="scene1-wrap">
+    <svg id="scene1-svg" viewBox="0 0 900 600"></svg>
+    <div id="s1-title">
+      <h2>区块链网络</h2>
+      <p>Blockchain Network — Decentralized Ledger</p>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════ SCENE 2: Typography ════════════════ -->
+<div class="scene" id="scene2">
+  <div id="scene2-wrap">
+    <div class="term-block" id="term1-block">
+      <div class="term-bg" id="term1-bg" style="background:#801b3a"></div>
+      <div class="term-main" id="term1-main" style="color:#ff4477">逼空</div>
+      <div class="term-en" id="term1-en">SHORT SQUEEZE</div>
+      <div class="term-def" id="term1-def">空头被迫买入平仓</div>
+    </div>
+    <br>
+    <div class="term-block" id="term2-block">
+      <div class="term-bg" id="term2-bg" style="background:#0d5a2a"></div>
+      <div class="term-main" id="term2-main" style="color:#44ff88">多头陷阱</div>
+      <div class="term-en" id="term2-en">BULL TRAP</div>
+      <div class="term-def" id="term2-def">价格假突破后反转下跌</div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════ SCENE 3: Country Cards ════════════════ -->
+<div class="scene" id="scene3">
+  <div id="scene3-wrap">
+    <!-- China Card -->
+    <div class="country-card china-card" id="china-card">
+      <div class="card-stripe"><div class="card-stripe-inner china-stripe" id="china-wave"></div></div>
+      <div class="card-body">
+        <div class="card-country">中国</div>
+        <div class="card-country-en">CHINA</div>
+        <div class="stat-row"><span class="stat-label">GDP (万亿 USD)</span><span><span class="stat-value" id="cn-gdp">0</span><span class="stat-unit">T</span></span></div>
+        <div class="stat-row"><span class="stat-label">黄金储备 (吨)</span><span><span class="stat-value" id="cn-gold">0</span><span class="stat-unit">t</span></span></div>
+        <div class="stat-row"><span class="stat-label">人口 (亿)</span><span><span class="stat-value" id="cn-pop">0</span><span class="stat-unit">亿</span></span></div>
+      </div>
+    </div>
+    <!-- India Card -->
+    <div class="country-card india-card" id="india-card">
+      <div class="card-stripe"><div class="card-stripe-inner india-stripe" id="india-wave"></div></div>
+      <div class="card-body">
+        <div class="card-country">印度</div>
+        <div class="card-country-en">INDIA</div>
+        <div class="stat-row"><span class="stat-label">GDP (万亿 USD)</span><span><span class="stat-value" id="in-gdp">0</span><span class="stat-unit">T</span></span></div>
+        <div class="stat-row"><span class="stat-label">黄金储备 (吨)</span><span><span class="stat-value" id="in-gold">0</span><span class="stat-unit">t</span></span></div>
+        <div class="stat-row"><span class="stat-label">人口 (亿)</span><span><span class="stat-value" id="in-pop">0</span><span class="stat-unit">亿</span></span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Controls -->
+<div id="ui">
+  <button id="btn-restart">↺ Restart</button>
+  <button id="btn-pp">⏸ Pause</button>
+  <button class="active-dot" data-scene="0">1 · 区块链</button>
+  <button data-scene="1">2 · 逼空</button>
+  <button data-scene="2">3 · 对比</button>
+</div>
+<div id="timer">0.00s</div>
+<div id="scene-label">Scene 1 / 3</div>
+
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+<script>
+// ═══════════════════════════════════════════════════════════
+//  GOLD PARTICLE BACKGROUND
+// ═══════════════════════════════════════════════════════════
+(function(){
+  const c=document.getElementById('bg-canvas'),ctx=c.getContext('2d');
+  let W,H;
+  function resize(){W=c.width=window.innerWidth;H=c.height=window.innerHeight}
+  resize();window.addEventListener('resize',resize);
+  const particles=[];
+  for(let i=0;i<60;i++){
+    particles.push({x:Math.random()*2000,y:Math.random()*1200,r:Math.random()*1.8+0.3,
+      vx:(Math.random()-0.5)*0.3,vy:(Math.random()-0.5)*0.3,
+      a:Math.random()*0.25+0.05});
+  }
+  function draw(){
+    ctx.clearRect(0,0,W,H);
+    for(const p of particles){
+      p.x+=p.vx;p.y+=p.vy;
+      if(p.x<0)p.x=W;if(p.x>W)p.x=0;if(p.y<0)p.y=H;if(p.y>H)p.y=0;
+      ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
+      ctx.fillStyle=`rgba(200,170,60,${p.a})`;ctx.fill();
+    }
+    requestAnimationFrame(draw);
+  }
+  draw();
+})();
+
+// ═══════════════════════════════════════════════════════════
+//  HELPERS
+// ═══════════════════════════════════════════════════════════
+const SVG_NS='http://www.w3.org/2000/svg';
+function svgEl(tag,attrs){
+  const el=document.createElementNS(SVG_NS,tag);
+  for(const[k,v]of Object.entries(attrs||{}))el.setAttribute(k,v);
+  return el;
+}
+
+// ═══════════════════════════════════════════════════════════
+//  SCENE 1: BLOCKCHAIN NETWORK
+// ═══════════════════════════════════════════════════════════
+function buildScene1(){
+  const svg=document.getElementById('scene1-svg');
+  svg.innerHTML='';
+  const cx=450,cy=260,radius=180,n=8;
+  const nodes=[];
+  // Device positions
+  for(let i=0;i<n;i++){
+    const a=(Math.PI*2/n)*i - Math.PI/2;
+    nodes.push({x:cx+Math.cos(a)*radius, y:cy+Math.sin(a)*radius});
+  }
+  // Connection lines group
+  const linesG=svgEl('g');svg.appendChild(linesG);
+  const lines=[];
+  for(let i=0;i<n;i++){
+    for(let j=i+1;j<n;j++){
+      if(Math.random()>0.45)continue; // sparse connections
+      const line=svgEl('line',{x1:nodes[i].x,y1:nodes[i].y,x2:nodes[j].x,y2:nodes[j].y,class:'conn-line'});
+      const len=Math.hypot(nodes[j].x-nodes[i].x,nodes[j].y-nodes[i].y);
+      line.setAttribute('stroke-dasharray',len);
+      line.setAttribute('stroke-dashoffset',len);
+      linesG.appendChild(line);
+      lines.push({el:line,len,i,j});
+    }
+  }
+  // Ensure minimum connectivity — add ring connections
+  for(let i=0;i<n;i++){
+    const j=(i+1)%n;
+    const exists=lines.some(l=>(l.i===Math.min(i,j)&&l.j===Math.max(i,j)));
+    if(!exists){
+      const line=svgEl('line',{x1:nodes[i].x,y1:nodes[i].y,x2:nodes[j].x,y2:nodes[j].y,class:'conn-line'});
+      const len=Math.hypot(nodes[j].x-nodes[i].x,nodes[j].y-nodes[i].y);
+      line.setAttribute('stroke-dasharray',len);
+      line.setAttribute('stroke-dashoffset',len);
+      linesG.appendChild(line);
+      lines.push({el:line,len,i,j});
+    }
+  }
+
+  // Central hub
+  const hubOuter=svgEl('circle',{cx,cy,r:28,class:'hub-circle'});
+  const hubInner=svgEl('circle',{cx,cy,r:22,class:'hub-inner'});
+  const hubDot=svgEl('circle',{cx,cy,r:6,fill:'rgba(255,215,0,0.7)'});
+  svg.appendChild(hubOuter);svg.appendChild(hubInner);svg.appendChild(hubDot);
+  gsap.set([hubOuter,hubInner,hubDot],{opacity:0});
+
+  // Hub connections to some nodes
+  const hubLines=[];
+  for(let i=0;i<n;i+=2){
+    const hl=svgEl('line',{x1:cx,y1:cy,x2:nodes[i].x,y2:nodes[i].y,class:'conn-line',stroke:'rgba(255,215,0,0.2)'});
+    const len=Math.hypot(nodes[i].x-cx,nodes[i].y-cy);
+    hl.setAttribute('stroke-dasharray',len);hl.setAttribute('stroke-dashoffset',len);
+    linesG.appendChild(hl);
+    hubLines.push({el:hl,len});
+  }
+
+  // Devices (laptop icons)
+  const devEls=[];
+  for(const nd of nodes){
+    const g=svgEl('g');
+    const body=svgEl('rect',{x:nd.x-28,y:nd.y-18,width:56,height:36,class:'device-rect'});
+    const screen=svgEl('rect',{x:nd.x-22,y:nd.y-13,width:44,height:24,class:'device-screen'});
+    const base=svgEl('rect',{x:nd.x-32,y:nd.y+18,width:64,height:5,rx:2,fill:'rgba(200,160,0,0.3)'});
+    g.appendChild(body);g.appendChild(screen);g.appendChild(base);
+    svg.appendChild(g);
+    devEls.push(g);
+    gsap.set(g,{opacity:0,scale:0.5,transformOrigin:'center center'});
+  }
+
+  // Coins that travel along lines
+  const coins=[];
+  const symbols=['₿','金','₿','金','₿','金'];
+  for(let i=0;i<Math.min(6,lines.length);i++){
+    const ln=lines[i];
+    const g=svgEl('g');
+    const circ=svgEl('circle',{r:11,fill:'rgba(255,215,0,0.15)',stroke:'rgba(255,215,0,0.7)','stroke-width':1.5});
+    const txt=svgEl('text',{fill:'#ffd700',class:'coin-text','font-size':'11px'});
+    txt.textContent=symbols[i%symbols.length];
+    g.appendChild(circ);g.appendChild(txt);
+    svg.appendChild(g);
+    gsap.set(g,{opacity:0});
+    coins.push({el:g,line:ln});
+  }
+
+  // Build timeline
+  const tl=gsap.timeline({paused:true});
+
+  // Devices fade in
+  tl.to(devEls,{opacity:1,scale:1,duration:0.5,stagger:0.06,ease:'back.out(1.7)'},0);
+
+  // Hub appears
+  tl.to([hubOuter,hubInner,hubDot],{opacity:1,duration:0.4,ease:'power2.out'},0.3);
+  tl.to(hubOuter,{attr:{r:32},duration:0.8,repeat:-1,yoyo:true,ease:'sine.inOut'},0.5);
+
+  // Lines draw
+  tl.to(lines.map(l=>l.el),{strokeDashoffset:0,duration:0.8,stagger:0.05,ease:'power2.inOut'},0.5);
+  tl.to(hubLines.map(l=>l.el),{strokeDashoffset:0,duration:0.6,stagger:0.08,ease:'power2.inOut'},0.7);
+
+  // Coins travel along paths
+  for(let ci=0;ci<coins.length;ci++){
+    const c=coins[ci],ln=c.line;
+    const sx=nodes[ln.i].x,sy=nodes[ln.i].y,ex=nodes[ln.j].x,ey=nodes[ln.j].y;
+    tl.set(c.el,{opacity:1},1.4+ci*0.15);
+    tl.fromTo(c.el,{attr:{transform:`translate(${sx},${sy})`}},{attr:{transform:`translate(${ex},${ey})`},duration:1.5,repeat:-1,yoyo:true,ease:'power1.inOut'},1.4+ci*0.15);
+  }
+
+  // Title
+  tl.from('#s1-title h2',{opacity:0,y:30,duration:0.5,ease:'power2.out'},0.8);
+  tl.from('#s1-title p',{opacity:0,y:15,duration:0.4,ease:'power2.out'},1.1);
+
+  return tl;
+}
+
+// ═══════════════════════════════════════════════════════════
+//  SCENE 2: ANIMATED TYPOGRAPHY
+// ═══════════════════════════════════════════════════════════
+function buildScene2(){
+  // Wrap each letter of EN subtitles in spans
+  ['term1-en','term2-en'].forEach(id=>{
+    const el=document.getElementById(id);
+    const text=el.textContent;
+    el.innerHTML='';
+    for(const ch of text){
+      const s=document.createElement('span');
+      s.textContent=ch;
+      s.style.opacity='0';s.style.display='inline-block';
+      if(ch===' ')s.style.width='0.4em';
+      el.appendChild(s);
+    }
+  });
+
+  const tl=gsap.timeline({paused:true});
+
+  // Term 1: 逼空
+  tl.to('#term1-bg',{scaleX:1,duration:0.35,ease:'power3.out'},0);
+  tl.to('#term1-main',{opacity:1,scale:1,duration:0.3,ease:'back.out(2.5)'},0.1);
+  // Typewriter for EN
+  const letters1=document.querySelectorAll('#term1-en span');
+  tl.to(letters1,{opacity:1,duration:0.03,stagger:0.04,ease:'none'},0.45);
+  tl.to('#term1-def',{opacity:1,duration:0.35,ease:'power2.out'},0.9);
+
+  // Term 2: 多头陷阱
+  tl.to('#term2-block',{opacity:1,duration:0.01},1.6);
+  tl.to('#term1-block',{opacity:0.3,scale:0.9,y:-20,duration:0.4,ease:'power2.inOut'},1.6);
+  tl.to('#term2-bg',{scaleX:1,duration:0.35,ease:'power3.out'},1.7);
+  tl.to('#term2-main',{opacity:1,scale:1,duration:0.3,ease:'back.out(2.5)'},1.8);
+  const letters2=document.querySelectorAll('#term2-en span');
+  tl.to(letters2,{opacity:1,duration:0.03,stagger:0.04,ease:'none'},2.1);
+  tl.to('#term2-def',{opacity:1,duration:0.35,ease:'power2.out'},2.5);
+
+  return tl;
+}
+
+// ═══════════════════════════════════════════════════════════
+//  SCENE 3: COUNTRY COMPARISON CARDS
+// ═══════════════════════════════════════════════════════════
+function buildScene3(){
+  const tl=gsap.timeline({paused:true});
+
+  // Cards fly in from sides
+  gsap.set('#china-card',{x:-600,opacity:0,rotation:-4});
+  gsap.set('#india-card',{x:600,opacity:0,rotation:4});
+
+  tl.to('#china-card',{x:0,opacity:1,rotation:0,duration:0.7,ease:'power3.out'},0);
+  tl.to('#india-card',{x:0,opacity:1,rotation:0,duration:0.7,ease:'power3.out'},0.12);
+
+  // Wave animation on stripes (subtle translateX oscillation)
+  tl.to('#china-wave',{x:8,duration:1.2,repeat:-1,yoyo:true,ease:'sine.inOut'},0.5);
+  tl.to('#india-wave',{x:-8,duration:1.4,repeat:-1,yoyo:true,ease:'sine.inOut'},0.5);
+
+  // Count-up stats
+  const stats=[
+    {el:'#cn-gdp',val:17.8,dec:1},{el:'#cn-gold',val:2235,dec:0},{el:'#cn-pop',val:14.1,dec:1},
+    {el:'#in-gdp',val:3.7,dec:1},{el:'#in-gold',val:803,dec:0},{el:'#in-pop',val:14.4,dec:1}
+  ];
+  for(const s of stats){
+    const obj={v:0};
+    tl.to(obj,{v:s.val,duration:1.5,ease:'power2.out',
+      onUpdate(){document.querySelector(s.el).textContent=obj.v.toFixed(s.dec)}},0.6);
+  }
+
+  // Stat rows stagger fade
+  tl.from('#china-card .stat-row',{opacity:0,x:-20,duration:0.4,stagger:0.12,ease:'power2.out'},0.5);
+  tl.from('#india-card .stat-row',{opacity:0,x:20,duration:0.4,stagger:0.12,ease:'power2.out'},0.62);
+
+  // Glow pulse on cards
+  tl.to('#china-card',{boxShadow:'0 0 60px rgba(212,61,106,0.25)',duration:1,repeat:-1,yoyo:true,ease:'sine.inOut'},1);
+  tl.to('#india-card',{boxShadow:'0 0 60px rgba(255,153,51,0.25)',duration:1.2,repeat:-1,yoyo:true,ease:'sine.inOut'},1);
+
+  return tl;
+}
+
+// ═══════════════════════════════════════════════════════════
+//  SCENE MANAGER
+// ═══════════════════════════════════════════════════════════
+const scenes=[
+  {id:'scene1',build:buildScene1,tl:null},
+  {id:'scene2',build:buildScene2,tl:null},
+  {id:'scene3',build:buildScene3,tl:null}
+];
+let currentScene=0;
+let paused=false;
+
+function resetSceneDOM(idx){
+  // Reset dynamic elements for rebuild
+  if(idx===1){
+    // Reset term block styles
+    gsap.set('#term1-block',{opacity:1,scale:1,y:0});
+    gsap.set('#term1-bg',{scaleX:0});gsap.set('#term1-main',{opacity:0,scale:0.3});
+    gsap.set('#term1-def',{opacity:0});
+    gsap.set('#term2-block',{opacity:0});
+    gsap.set('#term2-bg',{scaleX:0});gsap.set('#term2-main',{opacity:0,scale:0.3});
+    gsap.set('#term2-def',{opacity:0});
+  }
+  if(idx===2){
+    document.querySelector('#cn-gdp').textContent='0';
+    document.querySelector('#cn-gold').textContent='0';
+    document.querySelector('#cn-pop').textContent='0';
+    document.querySelector('#in-gdp').textContent='0';
+    document.querySelector('#in-gold').textContent='0';
+    document.querySelector('#in-pop').textContent='0';
+  }
+}
+
+function showScene(idx){
+  // Kill all timelines
+  for(const s of scenes){if(s.tl){s.tl.kill();s.tl=null}}
+
+  const sceneEls=document.querySelectorAll('.scene');
+  const fromEl=sceneEls[currentScene];
+  const toEl=sceneEls[idx];
+
+  // Crossfade
+  gsap.to(fromEl,{opacity:0,duration:0.35,ease:'power2.inOut',onComplete(){fromEl.classList.remove('active')}});
+
+  currentScene=idx;
+  resetSceneDOM(idx);
+
+  toEl.classList.add('active');
+  gsap.to(toEl,{opacity:1,duration:0.35,ease:'power2.inOut',delay:0.15});
+
+  // Build & play timeline
+  setTimeout(()=>{
+    scenes[idx].tl=scenes[idx].build();
+    if(!paused)scenes[idx].tl.play();
+  },200);
+
+  // Update nav buttons
+  document.querySelectorAll('#ui button[data-scene]').forEach(b=>{
+    b.classList.toggle('active-dot',parseInt(b.dataset.scene)===idx);
+  });
+  document.getElementById('scene-label').textContent=`Scene ${idx+1} / 3`;
+}
+
+// Timer
+let t0=performance.now();
+const timerEl=document.getElementById('timer');
+function updateTimer(){
+  if(!paused)timerEl.textContent=((performance.now()-t0)/1000).toFixed(2)+'s';
+  requestAnimationFrame(updateTimer);
+}
+updateTimer();
+
+// Controls
+document.getElementById('btn-restart').addEventListener('click',()=>{
+  t0=performance.now();
+  showScene(currentScene);
+});
+document.getElementById('btn-pp').addEventListener('click',function(){
+  paused=!paused;
+  this.textContent=paused?'▶ Play':'⏸ Pause';
+  const tl=scenes[currentScene].tl;
+  if(tl){paused?tl.pause():tl.play()}
+});
+document.querySelectorAll('#ui button[data-scene]').forEach(b=>{
+  b.addEventListener('click',()=>{
+    const idx=parseInt(b.dataset.scene);
+    if(idx!==currentScene){t0=performance.now();showScene(idx)}
+  });
+});
+
+// ── Init ──
+document.getElementById('scene1').classList.add('active');
+gsap.set('#scene1',{opacity:1});
+scenes[0].tl=buildScene1();
+scenes[0].tl.play();
+</script>
+</body>
+</html>
