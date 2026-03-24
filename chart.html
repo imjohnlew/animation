@@ -1,0 +1,806 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gold Data Visualization</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #05050f;
+      overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      color: white;
+      width: 100vw;
+      height: 100vh;
+    }
+
+    #particle-canvas {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      z-index: 0;
+    }
+
+    #chart-container {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 1;
+    }
+
+    #chart-title {
+      font-size: 36px;
+      font-weight: bold;
+      text-align: center;
+      margin-bottom: 10px;
+      background: linear-gradient(180deg, #ffffff 0%, #e0e0e0 45%, #888888 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      filter: drop-shadow(0 2px 8px rgba(200,160,0,0.3));
+      opacity: 0;
+      font-family: serif;
+    }
+    #chart-subtitle {
+      font-size: 14px;
+      color: rgba(190,155,80,0.75);
+      text-align: center;
+      margin-bottom: 20px;
+      opacity: 0;
+      font-family: sans-serif;
+    }
+
+    #svg-wrapper {
+      position: relative;
+      filter: drop-shadow(0 0 20px rgba(245,208,90,0.08));
+    }
+
+    #chart-svg {
+      display: block;
+    }
+
+    #ui {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 8px;
+      z-index: 10;
+    }
+    #ui button {
+      padding: 7px 20px;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.2);
+      color: white;
+      cursor: pointer;
+      border-radius: 6px;
+      font-size: 13px;
+      transition: background 0.15s;
+    }
+    #ui button:hover { background: rgba(255,255,255,0.18); }
+    #ui button.active {
+      background: rgba(245,208,90,0.2);
+      border-color: rgba(245,208,90,0.5);
+      color: #f5d05a;
+    }
+
+    #timer {
+      position: fixed;
+      top: 12px;
+      left: 12px;
+      color: rgba(255,255,255,0.35);
+      font-size: 11px;
+      font-family: monospace;
+      z-index: 10;
+    }
+
+    #hint {
+      position: fixed;
+      top: 12px;
+      right: 12px;
+      color: rgba(255,255,255,0.25);
+      font-size: 11px;
+      font-family: monospace;
+      text-align: right;
+      line-height: 1.6;
+      z-index: 10;
+    }
+
+    .axis-label {
+      fill: rgba(255,255,255,0.3);
+      font-size: 11px;
+    }
+    .grid-line {
+      stroke: rgba(255,255,255,0.05);
+      stroke-width: 1;
+    }
+    .annotation-text {
+      font-size: 12px;
+      font-family: sans-serif;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="particle-canvas"></canvas>
+  <div id="chart-container">
+    <div id="chart-title"></div>
+    <div id="chart-subtitle"></div>
+    <div id="svg-wrapper">
+      <svg id="chart-svg"></svg>
+    </div>
+  </div>
+
+  <div id="ui">
+    <button id="btn-restart">↺ Restart</button>
+    <button id="btn-pp">⏸ Pause</button>
+    <button class="active" data-scene="0">1 金价走势</button>
+    <button data-scene="1">2 金银对比</button>
+    <button data-scene="2">3 波动率</button>
+  </div>
+  <div id="timer">0.00s</div>
+  <div id="hint">Data Visualization<br>Gold Market Analysis</div>
+
+  <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+
+  <script>
+  (function() {
+    // ── Particle Background ───────────────────────────────────
+    const pCanvas = document.getElementById('particle-canvas');
+    const pCtx = pCanvas.getContext('2d');
+    const particles = [];
+    const PARTICLE_COUNT = 120;
+    const goldColors = ['#f5d05a','#b8860b','#ffffff','#e8c84a','#d4a836'];
+
+    function initParticles() {
+      pCanvas.width = window.innerWidth;
+      pCanvas.height = window.innerHeight;
+      particles.length = 0;
+      for (let i = 0; i < PARTICLE_COUNT; i++) {
+        particles.push({
+          x: Math.random() * pCanvas.width,
+          y: Math.random() * pCanvas.height,
+          vx: (Math.random() - 0.5) * 0.3,
+          vy: -(Math.random() * 0.4 + 0.1),
+          size: Math.random() * 2 + 0.5,
+          alpha: Math.random() * 0.4 + 0.1,
+          color: goldColors[Math.floor(Math.random() * goldColors.length)]
+        });
+      }
+    }
+
+    function drawParticles() {
+      pCtx.clearRect(0, 0, pCanvas.width, pCanvas.height);
+      for (const p of particles) {
+        p.x += p.vx;
+        p.y += p.vy;
+        if (p.y < -10) { p.y = pCanvas.height + 10; p.x = Math.random() * pCanvas.width; }
+        if (p.x < -10) p.x = pCanvas.width + 10;
+        if (p.x > pCanvas.width + 10) p.x = -10;
+        pCtx.globalAlpha = p.alpha + Math.sin(Date.now() * 0.001 + p.x) * 0.1;
+        pCtx.fillStyle = p.color;
+        pCtx.beginPath();
+        pCtx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        pCtx.fill();
+      }
+      requestAnimationFrame(drawParticles);
+    }
+
+    initParticles();
+    drawParticles();
+    window.addEventListener('resize', initParticles);
+
+    // ── Chart Setup ───────────────────────────────────────────
+    const margin = { top: 30, right: 50, bottom: 50, left: 70 };
+    let W, H, chartW, chartH;
+
+    function calcSize() {
+      W = Math.min(window.innerWidth * 0.85, 960);
+      H = Math.min(window.innerHeight * 0.55, 500);
+      chartW = W - margin.left - margin.right;
+      chartH = H - margin.top - margin.bottom;
+    }
+    calcSize();
+
+    const svg = d3.select('#chart-svg');
+    const titleEl = document.getElementById('chart-title');
+    const subtitleEl = document.getElementById('chart-subtitle');
+
+    // ── Timer ─────────────────────────────────────────────────
+    const timerEl = document.getElementById('timer');
+    let timerStart = null;
+    let timerRAF = null;
+    let paused = false;
+    let pauseTime = 0;
+
+    function updateTimer() {
+      if (paused) return;
+      const elapsed = (Date.now() - timerStart) / 1000;
+      timerEl.textContent = elapsed.toFixed(2) + 's';
+      timerRAF = requestAnimationFrame(updateTimer);
+    }
+
+    function startTimer() {
+      timerStart = Date.now();
+      pauseTime = 0;
+      paused = false;
+      if (timerRAF) cancelAnimationFrame(timerRAF);
+      updateTimer();
+    }
+
+    // ── Scene Data ────────────────────────────────────────────
+    const scenes = [
+      {
+        title: '黄金价格走势',
+        subtitle: 'Gold Price Trend 2020-2025',
+        build: buildScene1
+      },
+      {
+        title: '金银价格对比',
+        subtitle: 'Gold vs Silver (Normalized, 2020=100)',
+        build: buildScene2
+      },
+      {
+        title: '月度波动率',
+        subtitle: 'Monthly Volatility Index 2025',
+        build: buildScene3
+      }
+    ];
+
+    let currentScene = 0;
+    let currentTimeline = null;
+
+    // ── Scene 1: Gold Price Rally ─────────────────────────────
+    function buildScene1() {
+      const data = [
+        { year: 2020, price: 1700 },
+        { year: 2021, price: 1800 },
+        { year: 2022, price: 1650 },
+        { year: 2023, price: 2050 },
+        { year: 2024, price: 2400 },
+        { year: 2025, price: 3100 }
+      ];
+
+      svg.attr('width', W).attr('height', H);
+      const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
+
+      const x = d3.scaleLinear().domain([2020, 2025]).range([0, chartW]);
+      const y = d3.scaleLinear().domain([1400, 3400]).range([chartH, 0]);
+
+      // Grid
+      const gridG = g.append('g').attr('class', 'grid').attr('opacity', 0);
+      const yTicks = [1400, 1600, 1800, 2000, 2200, 2400, 2600, 2800, 3000, 3200, 3400];
+      yTicks.forEach(val => {
+        gridG.append('line')
+          .attr('class', 'grid-line')
+          .attr('x1', 0).attr('x2', chartW)
+          .attr('y1', y(val)).attr('y2', y(val));
+      });
+      const xTicks = [2020, 2021, 2022, 2023, 2024, 2025];
+      xTicks.forEach(val => {
+        gridG.append('line')
+          .attr('class', 'grid-line')
+          .attr('x1', x(val)).attr('x2', x(val))
+          .attr('y1', 0).attr('y2', chartH);
+      });
+
+      // Axes
+      const axesG = g.append('g').attr('class', 'axes').attr('opacity', 0);
+      // X axis
+      xTicks.forEach(val => {
+        axesG.append('text')
+          .attr('class', 'axis-label')
+          .attr('x', x(val)).attr('y', chartH + 25)
+          .attr('text-anchor', 'middle')
+          .text(val);
+      });
+      // Y axis
+      [1600, 2000, 2400, 2800, 3200].forEach(val => {
+        axesG.append('text')
+          .attr('class', 'axis-label')
+          .attr('x', -10).attr('y', y(val) + 4)
+          .attr('text-anchor', 'end')
+          .text('$' + val.toLocaleString());
+      });
+      // Y axis label
+      axesG.append('text')
+        .attr('class', 'axis-label')
+        .attr('transform', `rotate(-90)`)
+        .attr('x', -chartH / 2).attr('y', -55)
+        .attr('text-anchor', 'middle')
+        .attr('fill', 'rgba(255,255,255,0.4)')
+        .text('价格 Price (USD/oz)');
+
+      // Area gradient
+      const defs = svg.append('defs');
+      const areaGrad = defs.append('linearGradient')
+        .attr('id', 'areaGrad1')
+        .attr('x1', '0').attr('y1', '0')
+        .attr('x2', '0').attr('y2', '1');
+      areaGrad.append('stop').attr('offset', '0%').attr('stop-color', '#f5d05a').attr('stop-opacity', 0.4);
+      areaGrad.append('stop').attr('offset', '100%').attr('stop-color', '#f5d05a').attr('stop-opacity', 0.0);
+
+      // Area path
+      const areaGen = d3.area()
+        .x(d => x(d.year))
+        .y0(chartH)
+        .y1(d => y(d.price))
+        .curve(d3.curveMonotoneX);
+
+      const areaPath = g.append('path')
+        .datum(data)
+        .attr('d', areaGen)
+        .attr('fill', 'url(#areaGrad1)')
+        .attr('opacity', 0);
+
+      // Line path
+      const lineGen = d3.line()
+        .x(d => x(d.year))
+        .y(d => y(d.price))
+        .curve(d3.curveMonotoneX);
+
+      const linePath = g.append('path')
+        .datum(data)
+        .attr('d', lineGen)
+        .attr('fill', 'none')
+        .attr('stroke', '#f5d05a')
+        .attr('stroke-width', 3)
+        .attr('filter', 'drop-shadow(0 0 6px rgba(245,208,90,0.5))');
+
+      const lineLen = linePath.node().getTotalLength();
+      linePath
+        .attr('stroke-dasharray', lineLen)
+        .attr('stroke-dashoffset', lineLen);
+
+      // Data point dots
+      const dots = g.selectAll('.dot')
+        .data(data).enter()
+        .append('circle')
+        .attr('cx', d => x(d.year))
+        .attr('cy', d => y(d.price))
+        .attr('r', 4)
+        .attr('fill', '#f5d05a')
+        .attr('stroke', '#05050f')
+        .attr('stroke-width', 2)
+        .attr('opacity', 0)
+        .attr('filter', 'drop-shadow(0 0 4px rgba(245,208,90,0.6))');
+
+      // Price labels
+      const priceLabels = g.selectAll('.price-label')
+        .data(data).enter()
+        .append('text')
+        .attr('x', d => x(d.year))
+        .attr('y', d => y(d.price) - 14)
+        .attr('text-anchor', 'middle')
+        .attr('fill', 'rgba(255,255,255,0.7)')
+        .attr('font-size', '10px')
+        .attr('opacity', 0)
+        .text(d => '$' + d.price.toLocaleString());
+
+      // Rally zone highlight (2024-2025)
+      const rallyRect = g.append('rect')
+        .attr('x', x(2023.8))
+        .attr('y', y(3200))
+        .attr('width', x(2025) - x(2023.8))
+        .attr('height', y(1600) - y(3200))
+        .attr('fill', 'rgba(245,208,90,0.06)')
+        .attr('stroke', 'rgba(245,208,90,0.3)')
+        .attr('stroke-width', 1)
+        .attr('stroke-dasharray', '4,4')
+        .attr('rx', 4)
+        .attr('opacity', 0);
+
+      const rallyLabel = g.append('text')
+        .attr('x', x(2024.4))
+        .attr('y', y(3300))
+        .attr('text-anchor', 'middle')
+        .attr('fill', '#f5d05a')
+        .attr('font-size', '14px')
+        .attr('font-weight', 'bold')
+        .attr('opacity', 0)
+        .attr('filter', 'drop-shadow(0 0 8px rgba(245,208,90,0.5))');
+      rallyLabel.append('tspan').attr('x', x(2024.4)).attr('dy', 0).text('暴涨区间');
+      rallyLabel.append('tspan').attr('x', x(2024.4)).attr('dy', 16).attr('font-size', '10px').attr('font-weight', 'normal').text('Rally Zone');
+
+      // Timeline
+      const tl = gsap.timeline();
+      tl.to(gridG.node(), { opacity: 1, duration: 0.3 }, 0.2);
+      tl.to(axesG.node(), { opacity: 1, duration: 0.3 }, 0.2);
+      tl.to(linePath.node(), { strokeDashoffset: 0, duration: 1.5, ease: 'power2.inOut' }, 0.5);
+      tl.to(areaPath.node(), { opacity: 1, duration: 0.6, ease: 'power1.in' }, 2.0);
+      dots.each(function(d, i) {
+        tl.to(this, { opacity: 1, duration: 0.2 }, 0.5 + (i / (data.length - 1)) * 1.5);
+      });
+      priceLabels.each(function(d, i) {
+        tl.to(this, { opacity: 1, duration: 0.2 }, 0.7 + (i / (data.length - 1)) * 1.5);
+      });
+      tl.to(rallyRect.node(), { opacity: 1, duration: 0.5 }, 2.5);
+      tl.to(rallyLabel.node(), { opacity: 1, duration: 0.5 }, 2.5);
+
+      return tl;
+    }
+
+    // ── Scene 2: Gold vs Silver ───────────────────────────────
+    function buildScene2() {
+      const goldData = [
+        { year: 2020, val: 100 },
+        { year: 2021, val: 106 },
+        { year: 2022, val: 97 },
+        { year: 2023, val: 121 },
+        { year: 2024, val: 141 },
+        { year: 2025, val: 182 }
+      ];
+      const silverData = [
+        { year: 2020, val: 100 },
+        { year: 2021, val: 112 },
+        { year: 2022, val: 95 },
+        { year: 2023, val: 110 },
+        { year: 2024, val: 125 },
+        { year: 2025, val: 140 }
+      ];
+
+      svg.attr('width', W).attr('height', H);
+      const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
+
+      const x = d3.scaleLinear().domain([2020, 2025]).range([0, chartW]);
+      const y = d3.scaleLinear().domain([80, 200]).range([chartH, 0]);
+
+      // Grid
+      const gridG = g.append('g').attr('class', 'grid').attr('opacity', 0);
+      [80, 100, 120, 140, 160, 180, 200].forEach(val => {
+        gridG.append('line').attr('class', 'grid-line')
+          .attr('x1', 0).attr('x2', chartW)
+          .attr('y1', y(val)).attr('y2', y(val));
+      });
+      [2020, 2021, 2022, 2023, 2024, 2025].forEach(val => {
+        gridG.append('line').attr('class', 'grid-line')
+          .attr('x1', x(val)).attr('x2', x(val))
+          .attr('y1', 0).attr('y2', chartH);
+      });
+
+      // Axes
+      const axesG = g.append('g').attr('class', 'axes').attr('opacity', 0);
+      [2020, 2021, 2022, 2023, 2024, 2025].forEach(val => {
+        axesG.append('text').attr('class', 'axis-label')
+          .attr('x', x(val)).attr('y', chartH + 25)
+          .attr('text-anchor', 'middle').text(val);
+      });
+      [80, 100, 120, 140, 160, 180, 200].forEach(val => {
+        axesG.append('text').attr('class', 'axis-label')
+          .attr('x', -10).attr('y', y(val) + 4)
+          .attr('text-anchor', 'end').text(val);
+      });
+      axesG.append('text').attr('class', 'axis-label')
+        .attr('transform', 'rotate(-90)')
+        .attr('x', -chartH / 2).attr('y', -50)
+        .attr('text-anchor', 'middle')
+        .attr('fill', 'rgba(255,255,255,0.4)')
+        .text('指数 Index (2020=100)');
+
+      // Baseline 100
+      gridG.append('line')
+        .attr('x1', 0).attr('x2', chartW)
+        .attr('y1', y(100)).attr('y2', y(100))
+        .attr('stroke', 'rgba(255,255,255,0.15)')
+        .attr('stroke-width', 1)
+        .attr('stroke-dasharray', '6,3');
+
+      // Event lines
+      const events = [
+        { year: 2022.2, label: '俄乌冲突', sub: 'Conflict' },
+        { year: 2024.3, label: '央行购金潮', sub: 'Central Bank Buying' }
+      ];
+      const eventsG = g.append('g').attr('opacity', 0);
+      events.forEach(ev => {
+        eventsG.append('line')
+          .attr('x1', x(ev.year)).attr('x2', x(ev.year))
+          .attr('y1', 0).attr('y2', chartH)
+          .attr('stroke', 'rgba(245,208,90,0.3)')
+          .attr('stroke-width', 1)
+          .attr('stroke-dasharray', '4,4');
+        eventsG.append('text')
+          .attr('x', x(ev.year) + 6).attr('y', 15)
+          .attr('fill', 'rgba(245,208,90,0.7)')
+          .attr('font-size', '10px')
+          .text(ev.label);
+        eventsG.append('text')
+          .attr('x', x(ev.year) + 6).attr('y', 28)
+          .attr('fill', 'rgba(245,208,90,0.4)')
+          .attr('font-size', '9px')
+          .text(ev.sub);
+      });
+
+      // Lines
+      const lineGen = d3.line().x(d => x(d.year)).y(d => y(d.val)).curve(d3.curveMonotoneX);
+
+      const goldLine = g.append('path')
+        .datum(goldData).attr('d', lineGen)
+        .attr('fill', 'none')
+        .attr('stroke', '#f5d05a').attr('stroke-width', 2.5)
+        .attr('filter', 'drop-shadow(0 0 4px rgba(245,208,90,0.4))');
+      const goldLen = goldLine.node().getTotalLength();
+      goldLine.attr('stroke-dasharray', goldLen).attr('stroke-dashoffset', goldLen);
+
+      const silverLine = g.append('path')
+        .datum(silverData).attr('d', lineGen)
+        .attr('fill', 'none')
+        .attr('stroke', '#c0c0c0').attr('stroke-width', 2.5)
+        .attr('filter', 'drop-shadow(0 0 4px rgba(192,192,192,0.3))');
+      const silverLen = silverLine.node().getTotalLength();
+      silverLine.attr('stroke-dasharray', silverLen).attr('stroke-dashoffset', silverLen);
+
+      // End value labels
+      const goldEndLabel = g.append('text')
+        .attr('x', x(2025) + 8).attr('y', y(182) + 4)
+        .attr('fill', '#f5d05a').attr('font-size', '12px').attr('font-weight', 'bold')
+        .attr('opacity', 0).text('182');
+      const silverEndLabel = g.append('text')
+        .attr('x', x(2025) + 8).attr('y', y(140) + 4)
+        .attr('fill', '#c0c0c0').attr('font-size', '12px').attr('font-weight', 'bold')
+        .attr('opacity', 0).text('140');
+
+      // Legend
+      const legendG = g.append('g')
+        .attr('transform', `translate(${chartW - 140}, 10)`)
+        .attr('opacity', 0);
+      // Gold legend
+      legendG.append('line').attr('x1', 0).attr('x2', 20).attr('y1', 0).attr('y2', 0)
+        .attr('stroke', '#f5d05a').attr('stroke-width', 2.5);
+      legendG.append('text').attr('x', 26).attr('y', 4)
+        .attr('fill', '#f5d05a').attr('font-size', '12px').text('黄金 Gold');
+      // Silver legend
+      legendG.append('line').attr('x1', 0).attr('x2', 20).attr('y1', 22).attr('y2', 22)
+        .attr('stroke', '#c0c0c0').attr('stroke-width', 2.5);
+      legendG.append('text').attr('x', 26).attr('y', 26)
+        .attr('fill', '#c0c0c0').attr('font-size', '12px').text('白银 Silver');
+
+      // Timeline
+      const tl = gsap.timeline();
+      tl.to(gridG.node(), { opacity: 1, duration: 0.3 }, 0.2);
+      tl.to(axesG.node(), { opacity: 1, duration: 0.3 }, 0.2);
+      tl.to(goldLine.node(), { strokeDashoffset: 0, duration: 1.5, ease: 'power2.inOut' }, 0.5);
+      tl.to(silverLine.node(), { strokeDashoffset: 0, duration: 1.5, ease: 'power2.inOut' }, 0.5);
+      tl.to(goldEndLabel.node(), { opacity: 1, duration: 0.3 }, 2.0);
+      tl.to(silverEndLabel.node(), { opacity: 1, duration: 0.3 }, 2.0);
+      tl.to(eventsG.node(), { opacity: 1, duration: 0.5 }, 2.5);
+      tl.to(legendG.node(), { opacity: 1, duration: 0.3 }, 2.8);
+
+      return tl;
+    }
+
+    // ── Scene 3: Volatility Bar Chart ─────────────────────────
+    function buildScene3() {
+      const months = ['1月\nJan','2月\nFeb','3月\nMar','4月\nApr','5月\nMay','6月\nJun',
+                      '7月\nJul','8月\nAug','9月\nSep','10月\nOct','11月\nNov','12月\nDec'];
+      const data = [
+        { month: 0, val: 12, high: false },
+        { month: 1, val: 18, high: false },
+        { month: 2, val: 32, high: true },
+        { month: 3, val: 45, high: true },
+        { month: 4, val: 22, high: false },
+        { month: 5, val: 15, high: false },
+        { month: 6, val: 28, high: true },
+        { month: 7, val: 20, high: false },
+        { month: 8, val: 16, high: false },
+        { month: 9, val: 38, high: true },
+        { month: 10, val: 25, high: false },
+        { month: 11, val: 42, high: true }
+      ];
+
+      svg.attr('width', W).attr('height', H);
+      const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
+
+      const x = d3.scaleBand().domain(d3.range(12)).range([0, chartW]).padding(0.25);
+      const y = d3.scaleLinear().domain([0, 50]).range([chartH, 0]);
+
+      // Grid
+      const gridG = g.append('g').attr('class', 'grid').attr('opacity', 0);
+      [10, 20, 30, 40, 50].forEach(val => {
+        gridG.append('line').attr('class', 'grid-line')
+          .attr('x1', 0).attr('x2', chartW)
+          .attr('y1', y(val)).attr('y2', y(val));
+      });
+
+      // Axes
+      const axesG = g.append('g').attr('class', 'axes').attr('opacity', 0);
+      data.forEach((d, i) => {
+        const parts = months[i].split('\n');
+        const xPos = x(i) + x.bandwidth() / 2;
+        axesG.append('text').attr('class', 'axis-label')
+          .attr('x', xPos).attr('y', chartH + 18)
+          .attr('text-anchor', 'middle').attr('font-size', '10px')
+          .text(parts[0]);
+        axesG.append('text').attr('class', 'axis-label')
+          .attr('x', xPos).attr('y', chartH + 32)
+          .attr('text-anchor', 'middle').attr('font-size', '9px')
+          .attr('fill', 'rgba(255,255,255,0.2)')
+          .text(parts[1]);
+      });
+      [10, 20, 30, 40, 50].forEach(val => {
+        axesG.append('text').attr('class', 'axis-label')
+          .attr('x', -10).attr('y', y(val) + 4)
+          .attr('text-anchor', 'end').text(val + '%');
+      });
+      axesG.append('text').attr('class', 'axis-label')
+        .attr('transform', 'rotate(-90)')
+        .attr('x', -chartH / 2).attr('y', -50)
+        .attr('text-anchor', 'middle')
+        .attr('fill', 'rgba(255,255,255,0.4)')
+        .text('波动率 Volatility (%)');
+
+      // Defs for bar gradients
+      const defs = svg.append('defs');
+      const goldBarGrad = defs.append('linearGradient')
+        .attr('id', 'goldBarGrad').attr('x1', '0').attr('y1', '1').attr('x2', '0').attr('y2', '0');
+      goldBarGrad.append('stop').attr('offset', '0%').attr('stop-color', '#b8860b');
+      goldBarGrad.append('stop').attr('offset', '100%').attr('stop-color', '#f5d05a');
+
+      const redBarGrad = defs.append('linearGradient')
+        .attr('id', 'redBarGrad').attr('x1', '0').attr('y1', '1').attr('x2', '0').attr('y2', '0');
+      redBarGrad.append('stop').attr('offset', '0%').attr('stop-color', '#8b0000');
+      redBarGrad.append('stop').attr('offset', '100%').attr('stop-color', '#ff4444');
+
+      // Bars
+      const bars = g.selectAll('.bar')
+        .data(data).enter()
+        .append('rect')
+        .attr('x', d => x(d.month))
+        .attr('width', x.bandwidth())
+        .attr('y', chartH)
+        .attr('height', 0)
+        .attr('rx', 3)
+        .attr('fill', d => d.high ? 'url(#redBarGrad)' : 'url(#goldBarGrad)')
+        .attr('filter', d => d.high
+          ? 'drop-shadow(0 0 6px rgba(255,68,68,0.4))'
+          : 'drop-shadow(0 0 4px rgba(245,208,90,0.3))');
+
+      // Value labels
+      const valLabels = g.selectAll('.val-label')
+        .data(data).enter()
+        .append('text')
+        .attr('x', d => x(d.month) + x.bandwidth() / 2)
+        .attr('y', d => y(d.val) - 8)
+        .attr('text-anchor', 'middle')
+        .attr('fill', d => d.high ? '#ff6666' : 'rgba(255,255,255,0.6)')
+        .attr('font-size', '10px')
+        .attr('font-weight', d => d.high ? 'bold' : 'normal')
+        .attr('opacity', 0)
+        .text(d => d.val + '%');
+
+      // Legend
+      const legendG = g.append('g')
+        .attr('transform', `translate(${chartW - 180}, 5)`)
+        .attr('opacity', 0);
+      legendG.append('rect').attr('width', 12).attr('height', 12).attr('rx', 2)
+        .attr('fill', '#f5d05a');
+      legendG.append('text').attr('x', 18).attr('y', 10)
+        .attr('fill', 'rgba(255,255,255,0.6)').attr('font-size', '11px')
+        .text('正常 Normal');
+      legendG.append('rect').attr('x', 90).attr('width', 12).attr('height', 12).attr('rx', 2)
+        .attr('fill', '#ff4444');
+      legendG.append('text').attr('x', 108).attr('y', 10)
+        .attr('fill', 'rgba(255,255,255,0.6)').attr('font-size', '11px')
+        .text('高波动 High');
+
+      // Threshold line
+      const threshG = g.append('g').attr('opacity', 0);
+      threshG.append('line')
+        .attr('x1', 0).attr('x2', chartW)
+        .attr('y1', y(30)).attr('y2', y(30))
+        .attr('stroke', 'rgba(255,68,68,0.4)')
+        .attr('stroke-width', 1)
+        .attr('stroke-dasharray', '6,4');
+      threshG.append('text')
+        .attr('x', chartW + 5).attr('y', y(30) + 4)
+        .attr('fill', 'rgba(255,68,68,0.5)')
+        .attr('font-size', '9px')
+        .text('高波动阈值');
+
+      // Timeline
+      const tl = gsap.timeline();
+      tl.to(gridG.node(), { opacity: 1, duration: 0.3 }, 0.2);
+      tl.to(axesG.node(), { opacity: 1, duration: 0.3 }, 0.2);
+
+      bars.each(function(d, i) {
+        const barH = chartH - y(d.val);
+        tl.to(this, {
+          y: y(d.val),
+          height: barH,
+          duration: 0.4,
+          ease: 'back.out(1.2)'
+        }, 0.5 + i * 0.08);
+      });
+
+      valLabels.each(function(d, i) {
+        tl.to(this, { opacity: 1, duration: 0.2 }, 0.9 + i * 0.08);
+      });
+
+      tl.to(threshG.node(), { opacity: 1, duration: 0.4 }, 2.5);
+      tl.to(legendG.node(), { opacity: 1, duration: 0.3 }, 2.8);
+
+      return tl;
+    }
+
+    // ── Scene Management ──────────────────────────────────────
+    function playScene(index) {
+      // Kill previous timeline
+      if (currentTimeline) {
+        currentTimeline.kill();
+        currentTimeline = null;
+      }
+
+      // Clear SVG
+      svg.selectAll('*').remove();
+
+      // Reset title
+      const scene = scenes[index];
+      titleEl.textContent = scene.title;
+      subtitleEl.textContent = scene.subtitle;
+
+      // Animate title in
+      gsap.set(titleEl, { opacity: 0, y: -10 });
+      gsap.set(subtitleEl, { opacity: 0, y: -5 });
+      gsap.to(titleEl, { opacity: 1, y: 0, duration: 0.4, ease: 'power2.out' });
+      gsap.to(subtitleEl, { opacity: 1, y: 0, duration: 0.4, delay: 0.1, ease: 'power2.out' });
+
+      // Update nav buttons
+      document.querySelectorAll('#ui button[data-scene]').forEach((btn, i) => {
+        btn.classList.toggle('active', i === index);
+      });
+
+      // Recalc size & build
+      calcSize();
+      currentTimeline = scene.build();
+      currentScene = index;
+
+      // Reset timer
+      startTimer();
+
+      // Reset pause button
+      paused = false;
+      document.getElementById('btn-pp').textContent = '⏸ Pause';
+    }
+
+    // ── Event Listeners ───────────────────────────────────────
+    document.querySelectorAll('#ui button[data-scene]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        playScene(parseInt(btn.dataset.scene));
+      });
+    });
+
+    document.getElementById('btn-restart').addEventListener('click', () => {
+      playScene(currentScene);
+    });
+
+    document.getElementById('btn-pp').addEventListener('click', function() {
+      if (!currentTimeline) return;
+      paused = !paused;
+      if (paused) {
+        currentTimeline.pause();
+        pauseTime = Date.now();
+        this.textContent = '▶ Play';
+      } else {
+        currentTimeline.resume();
+        timerStart += (Date.now() - pauseTime);
+        updateTimer();
+        this.textContent = '⏸ Pause';
+      }
+    });
+
+    window.addEventListener('resize', () => {
+      calcSize();
+      playScene(currentScene);
+    });
+
+    // ── Init ──────────────────────────────────────────────────
+    playScene(0);
+  })();
+  </script>
+</body>
+</html>
