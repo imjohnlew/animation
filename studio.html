@@ -9,21 +9,22 @@
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/renderers/CSS3DRenderer.js"></script>
     <style>
         body {
-            margin: 0;
-            overflow: hidden;
-            background-color: #04040c;
-            color: #fff;
+            margin: 0; overflow: hidden;
+            background-color: #04040c; color: #fff;
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
         }
-
         #canvas-container { position: absolute; top:0; left:0; width:100%; height:100%; z-index:0; }
         #css-container    { position: absolute; top:0; left:0; width:100%; height:100%; z-index:10; }
 
-        /* ─── Slide Content (becomes a CSS3D object) ─── */
+        .overlay { position: fixed; inset: 0; pointer-events: none; z-index: 50; }
+        #overlay-flash { background: #fff; opacity: 0; transition: opacity 0.05s; }
+        #overlay-black { background: #000; opacity: 0; transition: opacity 0.5s ease; }
+
+        /* ─── Slide Content ─── */
         #slide-content {
             display: flex; flex-direction: column;
             align-items: center; justify-content: center;
-            gap: 1.8rem; width: 1050px; padding: 2rem;
+            gap: 2rem; width: 1050px; padding: 2.5rem;
             pointer-events: auto;
         }
 
@@ -40,7 +41,7 @@
         /* Banner */
         .banner {
             width: 100%; max-width: 960px;
-            padding: 2.2rem 3rem; text-align: center;
+            padding: 2.4rem 3rem; text-align: center;
             background: rgba(8,8,18,0.88);
             border: 2px solid rgba(200,160,0,0.45);
             border-radius: 0.5rem; position: relative;
@@ -89,72 +90,119 @@
         .card-divider { width: 55%; height: 1px; background: rgba(255,255,255,0.15); margin: 0.8rem auto; }
         .card p { font-size: 0.85rem; color: rgba(255,255,255,0.6); }
 
-        /* Caption */
-        .caption {
-            font-size: 1.7rem; font-weight: 600;
-            color: rgba(255,255,255,0.88);
-            width: 100%; max-width: 880px; padding-left: 0.5rem;
-        }
-
-        /* ─── Animations ─── */
+        /* ─── Keyframe Animations ─── */
         .slide-el { opacity: 0; }
 
+        /* Entrances */
         @keyframes badgeDrop {
-            0%   { opacity: 0; transform: translateY(-70px) scale(0.7); }
-            65%  { opacity: 1; transform: translateY(6px) scale(1.03); }
-            100% { opacity: 1; transform: translateY(0) scale(1); }
+            0%   { opacity:0; transform: translateY(-70px) scale(0.7); }
+            65%  { opacity:1; transform: translateY(6px) scale(1.03); }
+            100% { opacity:1; transform: translateY(0) scale(1); }
         }
         @keyframes bannerSlide {
-            0%   { opacity: 0; transform: translateX(-140px); }
-            100% { opacity: 1; transform: translateX(0); }
+            0%   { opacity:0; transform: translateX(-140px); }
+            100% { opacity:1; transform: translateX(0); }
         }
         @keyframes cardFlyLeft {
-            0%   { opacity: 0; transform: translateX(-220px) rotateY(18deg); }
-            100% { opacity: 1; transform: translateX(0) rotateY(0); }
+            0%   { opacity:0; transform: translateX(-220px) rotateY(18deg); }
+            100% { opacity:1; transform: translateX(0) rotateY(0); }
         }
         @keyframes cardFlyRight {
-            0%   { opacity: 0; transform: translateX(220px) rotateY(-18deg); }
-            100% { opacity: 1; transform: translateX(0) rotateY(0); }
+            0%   { opacity:0; transform: translateX(220px) rotateY(-18deg); }
+            100% { opacity:1; transform: translateX(0) rotateY(0); }
         }
-        @keyframes captionRise {
-            0%   { opacity: 0; transform: translateY(50px); }
-            100% { opacity: 1; transform: translateY(0); }
+        @keyframes bounceIn {
+            0%   { opacity:0; transform: scale(0.2); }
+            50%  { opacity:1; transform: scale(1.1); }
+            70%  { transform: scale(0.92); }
+            100% { opacity:1; transform: scale(1); }
         }
+        @keyframes scalePop {
+            0%   { opacity:0; transform: scale(0); }
+            65%  { opacity:1; transform: scale(1.18); }
+            100% { opacity:1; transform: scale(1); }
+        }
+        @keyframes spinIn {
+            0%   { opacity:0; transform: rotate(-35deg) scale(0.4); }
+            100% { opacity:1; transform: rotate(0) scale(1); }
+        }
+        @keyframes flipInX {
+            0%   { opacity:0; transform: perspective(600px) rotateX(40deg); }
+            60%  { opacity:1; transform: perspective(600px) rotateX(-5deg); }
+            100% { opacity:1; transform: perspective(600px) rotateX(0); }
+        }
+        @keyframes slideUp {
+            0%   { opacity:0; transform: translateY(80px); }
+            100% { opacity:1; transform: translateY(0); }
+        }
+        @keyframes slideDown {
+            0%   { opacity:0; transform: translateY(-80px); }
+            100% { opacity:1; transform: translateY(0); }
+        }
+
+        /* Effects */
         @keyframes pulseGlow {
-            0%, 100% { box-shadow: 0 0 30px rgba(255,215,0,0.3), 0 0 60px rgba(255,215,0,0.1); }
-            50%      { box-shadow: 0 0 50px rgba(255,215,0,0.6), 0 0 90px rgba(255,215,0,0.2); }
+            0%,100% { box-shadow: 0 0 30px rgba(255,215,0,0.3); }
+            50%     { box-shadow: 0 0 55px rgba(255,215,0,0.65), 0 0 100px rgba(255,215,0,0.2); }
         }
         @keyframes bannerGlow {
-            0%, 100% { border-color: rgba(200,160,0,0.45); box-shadow: 0 0 50px rgba(200,160,0,0.08); }
-            50%      { border-color: rgba(200,160,0,0.8);  box-shadow: 0 0 70px rgba(200,160,0,0.2); }
-        }
-        @keyframes shimmer {
-            0%   { background-position: -200% 0; }
-            100% { background-position: 200% 0; }
+            0%,100% { border-color: rgba(200,160,0,0.45); box-shadow: 0 0 50px rgba(200,160,0,0.08); }
+            50%     { border-color: rgba(200,160,0,0.85); box-shadow: 0 0 80px rgba(200,160,0,0.25); }
         }
         @keyframes cardPulseBlue {
-            0%, 100% { box-shadow: 0 0 30px rgba(60,90,210,0.2); }
-            50%      { box-shadow: 0 0 55px rgba(60,90,210,0.45); }
+            0%,100% { box-shadow: 0 0 30px rgba(60,90,210,0.2); }
+            50%     { box-shadow: 0 0 60px rgba(60,90,210,0.5); }
         }
         @keyframes cardPulseRed {
-            0%, 100% { box-shadow: 0 0 30px rgba(210,60,100,0.2); }
-            50%      { box-shadow: 0 0 55px rgba(210,60,100,0.45); }
+            0%,100% { box-shadow: 0 0 30px rgba(210,60,100,0.2); }
+            50%     { box-shadow: 0 0 60px rgba(210,60,100,0.5); }
+        }
+        @keyframes glitchEl {
+            0%,100% { transform: translate(0); filter: none; }
+            10% { transform: translate(-4px,2px); filter: hue-rotate(90deg); }
+            20% { transform: translate(4px,-2px); filter: hue-rotate(0); }
+            30% { transform: translate(-2px,-4px); filter: hue-rotate(180deg); }
+            40% { transform: translate(3px,4px); filter: hue-rotate(0); clip-path: inset(15% 0 35% 0); }
+            50% { transform: translate(-4px,0); clip-path: inset(45% 0 10% 0); }
+            60% { transform: translate(4px,2px); clip-path: none; filter: hue-rotate(270deg); }
+            70% { transform: translate(0); filter: none; clip-path: none; }
+        }
+        @keyframes floatHover {
+            0%,100% { transform: translateY(0); }
+            50%     { transform: translateY(-12px); }
+        }
+        @keyframes rubberBand {
+            0%   { transform: scale(1); }
+            30%  { transform: scaleX(1.2) scaleY(0.8); }
+            40%  { transform: scaleX(0.85) scaleY(1.15); }
+            50%  { transform: scaleX(1.1) scaleY(0.9); }
+            65%  { transform: scaleX(0.98) scaleY(1.02); }
+            75%  { transform: scaleX(1.02) scaleY(0.98); }
+            100% { transform: scale(1); }
+        }
+
+        /* Category labels */
+        .cat-label {
+            font-size: 9px; letter-spacing: 0.15em;
+            text-transform: uppercase; color: rgba(255,255,255,0.25);
+            margin-bottom: 4px;
         }
     </style>
 </head>
 <body>
-    <!-- WebGL Background -->
     <div id="canvas-container"></div>
-    <!-- CSS3D Layer (crisp HTML in 3D) -->
     <div id="css-container"></div>
 
-    <!-- ═══ SLIDE CONTENT ═══ (edit text/structure here) -->
+    <!-- Overlays for transitions -->
+    <div id="overlay-flash" class="overlay"></div>
+    <div id="overlay-black" class="overlay"></div>
+
+    <!-- ═══ SLIDE CONTENT ═══ -->
     <div id="slide-content">
         <div id="el-badge" class="badge slide-el">
             <span class="badge-main">问题一</span>
             <span class="badge-sub">Question One</span>
         </div>
-
         <div id="el-banner" class="banner slide-el">
             <div class="ornament-row">
                 <div class="ornament-line"></div>
@@ -164,7 +212,6 @@
             <div class="banner-title">为什么涨</div>
             <div class="banner-sub">Why the Rally?</div>
         </div>
-
         <div class="cards-row">
             <div id="el-card-l" class="card card-blue slide-el">
                 <div class="card-top-line"></div>
@@ -179,285 +226,404 @@
                 <p>Long Term</p>
             </div>
         </div>
-
-        <div id="el-caption" class="caption slide-el">
-            在这一个月的时间尺度之内
-        </div>
     </div>
 
     <!-- ═══ CONTROLS ═══ -->
-    <div class="fixed bottom-5 left-1/2 -translate-x-1/2 z-[100] flex flex-col items-center gap-2.5 pointer-events-auto w-full px-4">
-        <!-- Camera modes -->
-        <div class="flex flex-wrap justify-center gap-2">
-            <button onclick="setMode('cinematic',this)" class="mode-btn active bg-cyan-500/30 text-cyan-200 border-cyan-400 hover:bg-cyan-500/50 px-4 py-1.5 rounded-full backdrop-blur-md border transition shadow-[0_0_12px_rgba(0,240,255,0.35)] font-medium text-xs">🎬 Cinematic</button>
-            <button onclick="setMode('focus',this)"     class="mode-btn bg-white/10 text-white border-white/20 hover:bg-white/20 px-4 py-1.5 rounded-full backdrop-blur-md border transition font-medium text-xs">📖 Focus Read</button>
-            <button onclick="setMode('drag',this)"      class="mode-btn bg-white/10 text-white border-white/20 hover:bg-white/20 px-4 py-1.5 rounded-full backdrop-blur-md border transition font-medium text-xs">🖱️ Interactive</button>
-            <button onclick="setMode('hero',this)"      class="mode-btn bg-white/10 text-white border-white/20 hover:bg-white/20 px-4 py-1.5 rounded-full backdrop-blur-md border transition font-medium text-xs">🎭 Hero Tilt</button>
-            <button onclick="setMode('orbit',this)"     class="mode-btn bg-white/10 text-white border-white/20 hover:bg-white/20 px-4 py-1.5 rounded-full backdrop-blur-md border transition font-medium text-xs">🌀 Orbit</button>
+    <div class="fixed bottom-4 left-1/2 -translate-x-1/2 z-[100] flex flex-col items-center gap-1.5 pointer-events-auto w-full px-3">
+        <!-- Camera -->
+        <div class="text-center">
+            <div class="cat-label">Camera</div>
+            <div class="flex flex-wrap justify-center gap-1.5">
+                <button onclick="setMode('cinematic',this)" class="mode-btn active bg-cyan-500/30 text-cyan-200 border-cyan-400 hover:bg-cyan-500/50 px-3.5 py-1 rounded-full backdrop-blur-md border transition shadow-[0_0_10px_rgba(0,240,255,0.3)] font-medium text-[11px]">🎬 Cinematic</button>
+                <button onclick="setMode('focus',this)"     class="mode-btn bg-white/10 text-white border-white/20 hover:bg-white/20 px-3.5 py-1 rounded-full backdrop-blur-md border transition font-medium text-[11px]">📖 Focus</button>
+                <button onclick="setMode('drag',this)"      class="mode-btn bg-white/10 text-white border-white/20 hover:bg-white/20 px-3.5 py-1 rounded-full backdrop-blur-md border transition font-medium text-[11px]">🖱️ Drag</button>
+                <button onclick="setMode('hero',this)"      class="mode-btn bg-white/10 text-white border-white/20 hover:bg-white/20 px-3.5 py-1 rounded-full backdrop-blur-md border transition font-medium text-[11px]">🎭 Hero</button>
+                <button onclick="setMode('orbit',this)"     class="mode-btn bg-white/10 text-white border-white/20 hover:bg-white/20 px-3.5 py-1 rounded-full backdrop-blur-md border transition font-medium text-[11px]">🌀 Orbit</button>
+            </div>
         </div>
-        <!-- Element animations -->
-        <div class="flex flex-wrap justify-center gap-2">
-            <button onclick="animBadge()"   class="bg-yellow-500/25 text-yellow-200 border-yellow-400/60 hover:bg-yellow-500/40 px-4 py-1.5 rounded-full backdrop-blur-md border transition shadow-[0_0_10px_rgba(234,179,8,0.25)] font-medium text-xs">🏷️ Badge</button>
-            <button onclick="animBanner()"  class="bg-amber-500/25 text-amber-200 border-amber-400/60 hover:bg-amber-500/40 px-4 py-1.5 rounded-full backdrop-blur-md border transition shadow-[0_0_10px_rgba(217,119,6,0.25)] font-medium text-xs">📜 Banner</button>
-            <button onclick="animCards()"   class="bg-purple-500/25 text-purple-200 border-purple-400/60 hover:bg-purple-500/40 px-4 py-1.5 rounded-full backdrop-blur-md border transition shadow-[0_0_10px_rgba(168,85,247,0.25)] font-medium text-xs">🎴 Cards</button>
-            <button onclick="animCaption()" class="bg-blue-500/25 text-blue-200 border-blue-400/60 hover:bg-blue-500/40 px-4 py-1.5 rounded-full backdrop-blur-md border transition shadow-[0_0_10px_rgba(59,130,246,0.25)] font-medium text-xs">💬 Caption</button>
-            <button onclick="animGlow()"    class="bg-pink-500/25 text-pink-200 border-pink-400/60 hover:bg-pink-500/40 px-4 py-1.5 rounded-full backdrop-blur-md border transition shadow-[0_0_10px_rgba(236,72,153,0.25)] font-medium text-xs">✨ Glow Pulse</button>
-            <button onclick="animAll()"     class="bg-green-500/25 text-green-200 border-green-400/60 hover:bg-green-500/40 px-4 py-1.5 rounded-full backdrop-blur-md border transition shadow-[0_0_10px_rgba(34,197,94,0.25)] font-medium text-xs">🎬 Full Sequence</button>
-            <button onclick="resetAll()"    class="bg-white/10 text-gray-300 border-white/20 hover:bg-white/20 px-4 py-1.5 rounded-full backdrop-blur-md border transition font-medium text-xs">🔄 Reset</button>
+        <!-- Entrances -->
+        <div class="text-center">
+            <div class="cat-label">Entrance</div>
+            <div class="flex flex-wrap justify-center gap-1.5">
+                <button onclick="animBadge()"   class="bg-yellow-500/20 text-yellow-200 border-yellow-400/50 hover:bg-yellow-500/35 px-3.5 py-1 rounded-full backdrop-blur-md border transition font-medium text-[11px]">🏷️ Badge</button>
+                <button onclick="animBanner()"  class="bg-amber-500/20 text-amber-200 border-amber-400/50 hover:bg-amber-500/35 px-3.5 py-1 rounded-full backdrop-blur-md border transition font-medium text-[11px]">📜 Banner</button>
+                <button onclick="animCards()"   class="bg-purple-500/20 text-purple-200 border-purple-400/50 hover:bg-purple-500/35 px-3.5 py-1 rounded-full backdrop-blur-md border transition font-medium text-[11px]">🎴 Cards</button>
+                <button onclick="animBounce()"  class="bg-teal-500/20 text-teal-200 border-teal-400/50 hover:bg-teal-500/35 px-3.5 py-1 rounded-full backdrop-blur-md border transition font-medium text-[11px]">⬆️ Bounce</button>
+                <button onclick="animPop()"     class="bg-indigo-500/20 text-indigo-200 border-indigo-400/50 hover:bg-indigo-500/35 px-3.5 py-1 rounded-full backdrop-blur-md border transition font-medium text-[11px]">💫 Pop</button>
+                <button onclick="animSpin()"    class="bg-violet-500/20 text-violet-200 border-violet-400/50 hover:bg-violet-500/35 px-3.5 py-1 rounded-full backdrop-blur-md border transition font-medium text-[11px]">🌀 Spin</button>
+                <button onclick="animFlip()"    class="bg-sky-500/20 text-sky-200 border-sky-400/50 hover:bg-sky-500/35 px-3.5 py-1 rounded-full backdrop-blur-md border transition font-medium text-[11px]">🔃 Flip</button>
+                <button onclick="animSlideUp()" class="bg-lime-500/20 text-lime-200 border-lime-400/50 hover:bg-lime-500/35 px-3.5 py-1 rounded-full backdrop-blur-md border transition font-medium text-[11px]">⬆ Slide Up</button>
+            </div>
+        </div>
+        <!-- Effects -->
+        <div class="text-center">
+            <div class="cat-label">Effects</div>
+            <div class="flex flex-wrap justify-center gap-1.5">
+                <button onclick="animShake()"     class="bg-red-500/20 text-red-200 border-red-400/50 hover:bg-red-500/35 px-3.5 py-1 rounded-full backdrop-blur-md border transition font-medium text-[11px]">💥 Shake</button>
+                <button onclick="animGlitch()"    class="bg-emerald-500/20 text-emerald-200 border-emerald-400/50 hover:bg-emerald-500/35 px-3.5 py-1 rounded-full backdrop-blur-md border transition font-medium text-[11px]">⚡ Glitch</button>
+                <button onclick="animFlash()"     class="bg-white/15 text-white border-white/30 hover:bg-white/25 px-3.5 py-1 rounded-full backdrop-blur-md border transition font-medium text-[11px]">🔦 Flash</button>
+                <button onclick="animZoomPunch()"  class="bg-orange-500/20 text-orange-200 border-orange-400/50 hover:bg-orange-500/35 px-3.5 py-1 rounded-full backdrop-blur-md border transition font-medium text-[11px]">🔍 Zoom</button>
+                <button onclick="animGlow()"      class="bg-pink-500/20 text-pink-200 border-pink-400/50 hover:bg-pink-500/35 px-3.5 py-1 rounded-full backdrop-blur-md border transition font-medium text-[11px]">✨ Glow</button>
+                <button onclick="animFlicker()"   class="bg-cyan-500/20 text-cyan-200 border-cyan-400/50 hover:bg-cyan-500/35 px-3.5 py-1 rounded-full backdrop-blur-md border transition font-medium text-[11px]">💡 Flicker</button>
+                <button onclick="animRubber()"    class="bg-fuchsia-500/20 text-fuchsia-200 border-fuchsia-400/50 hover:bg-fuchsia-500/35 px-3.5 py-1 rounded-full backdrop-blur-md border transition font-medium text-[11px]">🫧 Rubber</button>
+                <button onclick="animFloat()"     class="bg-blue-500/20 text-blue-200 border-blue-400/50 hover:bg-blue-500/35 px-3.5 py-1 rounded-full backdrop-blur-md border transition font-medium text-[11px]">🎈 Float</button>
+            </div>
+        </div>
+        <!-- Transitions & Utility -->
+        <div class="text-center">
+            <div class="cat-label">Transition / Utility</div>
+            <div class="flex flex-wrap justify-center gap-1.5">
+                <button onclick="animFadeOut()"  class="bg-gray-500/20 text-gray-300 border-gray-400/50 hover:bg-gray-500/35 px-3.5 py-1 rounded-full backdrop-blur-md border transition font-medium text-[11px]">⬛ Fade Out</button>
+                <button onclick="animFadeIn()"   class="bg-gray-500/20 text-gray-300 border-gray-400/50 hover:bg-gray-500/35 px-3.5 py-1 rounded-full backdrop-blur-md border transition font-medium text-[11px]">⬜ Fade In</button>
+                <button onclick="animAll()"      class="bg-green-500/25 text-green-200 border-green-400/60 hover:bg-green-500/40 px-3.5 py-1 rounded-full backdrop-blur-md border transition shadow-[0_0_8px_rgba(34,197,94,0.2)] font-medium text-[11px]">🎬 Sequence</button>
+                <button onclick="resetAll()"     class="bg-white/10 text-gray-300 border-white/20 hover:bg-white/20 px-3.5 py-1 rounded-full backdrop-blur-md border transition font-medium text-[11px]">🔄 Reset</button>
+            </div>
         </div>
     </div>
 
-    <!-- Timer -->
     <div id="timer" class="fixed top-3 left-3 z-[100] text-white/30 text-[11px] font-mono">0.0s</div>
 
     <script>
-        /* ═══════════════════════════════════════════════════
-           GLOBAL STATE
-        ═══════════════════════════════════════════════════ */
+        /* ═══════════════════════════════════════════════
+           STATE
+        ═══════════════════════════════════════════════ */
         let currentMode = 'cinematic';
         let isDragging = false;
         let dragRotation = { x: 0, y: 0 };
         let prevMouse = { x: 0, y: 0 };
+
+        // Effect state (used in render loop)
+        let shakeIntensity = 0;
+        let zoomPunchOffset = 0;
+
+        const ELS = () => document.querySelectorAll('.slide-el');
+        const EL = id => document.getElementById(id);
 
         /* ─── Mode switching ─── */
         window.setMode = function(mode, el) {
             currentMode = mode;
             if (mode === 'drag') dragRotation = { x: 0, y: 0 };
             document.querySelectorAll('.mode-btn').forEach(b => {
-                b.className = "mode-btn bg-white/10 text-white border-white/20 hover:bg-white/20 px-4 py-1.5 rounded-full backdrop-blur-md border transition font-medium text-xs";
+                b.className = "mode-btn bg-white/10 text-white border-white/20 hover:bg-white/20 px-3.5 py-1 rounded-full backdrop-blur-md border transition font-medium text-[11px]";
             });
-            el.className = "mode-btn active bg-cyan-500/30 text-cyan-200 border-cyan-400 hover:bg-cyan-500/50 px-4 py-1.5 rounded-full backdrop-blur-md border transition shadow-[0_0_12px_rgba(0,240,255,0.35)] font-medium text-xs";
+            el.className = "mode-btn active bg-cyan-500/30 text-cyan-200 border-cyan-400 hover:bg-cyan-500/50 px-3.5 py-1 rounded-full backdrop-blur-md border transition shadow-[0_0_10px_rgba(0,240,255,0.3)] font-medium text-[11px]";
         };
 
-        /* ─── Reusable anim trigger ─── */
-        function triggerAnim(el, animName, duration, ease) {
+        /* ─── Helpers ─── */
+        function triggerAnim(el, name, dur, ease) {
             el.style.animation = 'none';
             el.style.opacity = '0';
             requestAnimationFrame(() => {
-                el.style.animation = `${animName} ${duration}s ${ease} forwards`;
+                el.style.animation = `${name} ${dur}s ${ease} forwards`;
             });
         }
+        function triggerAnimVisible(el, name, dur, ease, iter) {
+            el.style.animation = 'none';
+            el.style.opacity = '1';
+            requestAnimationFrame(() => {
+                el.style.animation = `${name} ${dur}s ${ease} ${iter || '1'} forwards`;
+            });
+        }
+        function allVisible() {
+            ELS().forEach(el => { el.style.animation = 'none'; el.style.opacity = '1'; });
+        }
 
-        /* ─── Element animation triggers ─── */
+        /* ═══════════════════════════════════════════════
+           ENTRANCE ANIMATIONS
+        ═══════════════════════════════════════════════ */
         window.animBadge = function() {
-            triggerAnim(document.getElementById('el-badge'), 'badgeDrop', 0.75, 'cubic-bezier(0.34,1.56,0.64,1)');
+            triggerAnim(EL('el-badge'), 'badgeDrop', 0.75, 'cubic-bezier(0.34,1.56,0.64,1)');
         };
         window.animBanner = function() {
-            triggerAnim(document.getElementById('el-banner'), 'bannerSlide', 0.7, 'cubic-bezier(0.22,0.61,0.36,1)');
+            triggerAnim(EL('el-banner'), 'bannerSlide', 0.7, 'cubic-bezier(0.22,0.61,0.36,1)');
         };
         window.animCards = function() {
-            triggerAnim(document.getElementById('el-card-l'), 'cardFlyLeft',  0.65, 'cubic-bezier(0.22,0.61,0.36,1)');
-            setTimeout(() => {
-                triggerAnim(document.getElementById('el-card-r'), 'cardFlyRight', 0.65, 'cubic-bezier(0.22,0.61,0.36,1)');
-            }, 120);
+            triggerAnim(EL('el-card-l'), 'cardFlyLeft',  0.65, 'cubic-bezier(0.22,0.61,0.36,1)');
+            setTimeout(() => triggerAnim(EL('el-card-r'), 'cardFlyRight', 0.65, 'cubic-bezier(0.22,0.61,0.36,1)'), 120);
         };
-        window.animCaption = function() {
-            triggerAnim(document.getElementById('el-caption'), 'captionRise', 0.6, 'cubic-bezier(0.22,0.61,0.36,1)');
+        window.animBounce = function() {
+            resetAll();
+            ELS().forEach((el, i) => {
+                setTimeout(() => triggerAnim(el, 'bounceIn', 0.7, 'cubic-bezier(0.34,1.56,0.64,1)'), i * 100);
+            });
         };
+        window.animPop = function() {
+            resetAll();
+            ELS().forEach((el, i) => {
+                setTimeout(() => triggerAnim(el, 'scalePop', 0.55, 'cubic-bezier(0.22,0.61,0.36,1)'), i * 90);
+            });
+        };
+        window.animSpin = function() {
+            resetAll();
+            ELS().forEach((el, i) => {
+                setTimeout(() => triggerAnim(el, 'spinIn', 0.65, 'cubic-bezier(0.22,0.61,0.36,1)'), i * 110);
+            });
+        };
+        window.animFlip = function() {
+            resetAll();
+            ELS().forEach((el, i) => {
+                setTimeout(() => triggerAnim(el, 'flipInX', 0.7, 'ease-out'), i * 100);
+            });
+        };
+        window.animSlideUp = function() {
+            resetAll();
+            ELS().forEach((el, i) => {
+                setTimeout(() => triggerAnim(el, 'slideUp', 0.6, 'cubic-bezier(0.22,0.61,0.36,1)'), i * 90);
+            });
+        };
+
+        /* ═══════════════════════════════════════════════
+           EFFECTS (applied to visible elements)
+        ═══════════════════════════════════════════════ */
+        window.animShake = function() {
+            allVisible();
+            shakeIntensity = 20;
+        };
+
+        window.animGlitch = function() {
+            allVisible();
+            ELS().forEach(el => {
+                triggerAnimVisible(el, 'glitchEl', 0.6, 'linear');
+            });
+            // Also flash quickly
+            setTimeout(animFlash, 200);
+        };
+
+        window.animFlash = function() {
+            const ov = EL('overlay-flash');
+            ov.style.transition = 'none';
+            ov.style.opacity = '0.85';
+            requestAnimationFrame(() => {
+                ov.style.transition = 'opacity 0.35s ease-out';
+                ov.style.opacity = '0';
+            });
+        };
+
+        window.animZoomPunch = function() {
+            allVisible();
+            zoomPunchOffset = 450;
+        };
+
         window.animGlow = function() {
-            const badge  = document.getElementById('el-badge');
-            const banner = document.getElementById('el-banner');
-            const cardL  = document.getElementById('el-card-l');
-            const cardR  = document.getElementById('el-card-r');
-            badge.style.animation  = 'pulseGlow 1.8s ease-in-out infinite';
+            const badge = EL('el-badge'), banner = EL('el-banner');
+            const cL = EL('el-card-l'), cR = EL('el-card-r');
             badge.style.opacity = '1';
-            banner.style.animation = 'bannerGlow 2s ease-in-out infinite';
+            badge.style.animation  = 'pulseGlow 1.8s ease-in-out infinite';
             banner.style.opacity = '1';
-            cardL.style.animation  = 'cardPulseBlue 2s ease-in-out infinite 0.2s';
-            cardL.style.opacity = '1';
-            cardR.style.animation  = 'cardPulseRed 2s ease-in-out infinite 0.4s';
-            cardR.style.opacity = '1';
+            banner.style.animation = 'bannerGlow 2s ease-in-out infinite';
+            cL.style.opacity = '1';
+            cL.style.animation = 'cardPulseBlue 2s ease-in-out infinite 0.15s';
+            cR.style.opacity = '1';
+            cR.style.animation = 'cardPulseRed 2s ease-in-out infinite 0.3s';
         };
+
+        window.animFlicker = function() {
+            allVisible();
+            let count = 0;
+            const els = [...ELS()];
+            const iv = setInterval(() => {
+                const on = count % 2 === 0;
+                els.forEach(el => el.style.opacity = on ? '0.15' : '1');
+                count++;
+                if (count > 9) { clearInterval(iv); els.forEach(el => el.style.opacity = '1'); }
+            }, 70);
+        };
+
+        window.animRubber = function() {
+            allVisible();
+            ELS().forEach((el, i) => {
+                setTimeout(() => triggerAnimVisible(el, 'rubberBand', 0.8, 'ease-in-out'), i * 80);
+            });
+        };
+
+        window.animFloat = function() {
+            allVisible();
+            ELS().forEach((el, i) => {
+                el.style.animation = `floatHover 2.5s ease-in-out infinite ${i * 0.25}s`;
+            });
+        };
+
+        /* ═══════════════════════════════════════════════
+           TRANSITIONS
+        ═══════════════════════════════════════════════ */
+        window.animFadeOut = function() {
+            EL('overlay-black').style.transition = 'opacity 0.5s ease';
+            EL('overlay-black').style.opacity = '1';
+        };
+        window.animFadeIn = function() {
+            EL('overlay-black').style.transition = 'opacity 0.5s ease';
+            EL('overlay-black').style.opacity = '0';
+        };
+
+        /* ═══════════════════════════════════════════════
+           SEQUENCE & RESET
+        ═══════════════════════════════════════════════ */
         window.animAll = function() {
             resetAll();
-            setTimeout(animBadge,    200);
-            setTimeout(animBanner,   750);
-            setTimeout(animCards,   1450);
-            setTimeout(animCaption, 2200);
+            animFadeIn();
+            setTimeout(animBadge,   200);
+            setTimeout(animBanner,  750);
+            setTimeout(animCards,  1400);
         };
         window.resetAll = function() {
-            document.querySelectorAll('.slide-el').forEach(el => {
-                el.style.animation = 'none';
-                el.style.opacity = '0';
-            });
+            ELS().forEach(el => { el.style.animation = 'none'; el.style.opacity = '0'; });
+            EL('overlay-black').style.opacity = '0';
         };
 
         /* ─── Drag handlers ─── */
-        function dragStart(x, y)  { isDragging = true; prevMouse = { x, y }; }
-        function dragMove(x, y) {
-            if (!isDragging || currentMode !== 'drag') { prevMouse = { x, y }; return; }
-            dragRotation.x += (x - prevMouse.x) * 0.005;
-            dragRotation.y += (y - prevMouse.y) * 0.005;
-            dragRotation.y = Math.max(-Math.PI/3, Math.min(Math.PI/3, dragRotation.y));
-            prevMouse = { x, y };
+        function dragStart(x,y) { isDragging=true; prevMouse={x,y}; }
+        function dragMove(x,y) {
+            if (!isDragging||currentMode!=='drag') { prevMouse={x,y}; return; }
+            dragRotation.x += (x-prevMouse.x)*0.005;
+            dragRotation.y += (y-prevMouse.y)*0.005;
+            dragRotation.y = Math.max(-Math.PI/3,Math.min(Math.PI/3,dragRotation.y));
+            prevMouse={x,y};
         }
-        function dragEnd() { isDragging = false; }
-
-        document.addEventListener('mousedown', e => dragStart(e.clientX, e.clientY));
-        document.addEventListener('mousemove', e => dragMove(e.clientX, e.clientY));
+        function dragEnd() { isDragging=false; }
+        document.addEventListener('mousedown', e=>dragStart(e.clientX,e.clientY));
+        document.addEventListener('mousemove', e=>dragMove(e.clientX,e.clientY));
         document.addEventListener('mouseup', dragEnd);
-        document.addEventListener('touchstart', e => dragStart(e.touches[0].clientX, e.touches[0].clientY), { passive: true });
-        document.addEventListener('touchmove',  e => dragMove(e.touches[0].clientX, e.touches[0].clientY),  { passive: true });
+        document.addEventListener('touchstart', e=>dragStart(e.touches[0].clientX,e.touches[0].clientY),{passive:true});
+        document.addEventListener('touchmove',  e=>dragMove(e.touches[0].clientX,e.touches[0].clientY),{passive:true});
         document.addEventListener('touchend', dragEnd);
 
-        /* ═══════════════════════════════════════════════════
+        /* ═══════════════════════════════════════════════
            THREE.JS SCENE
-        ═══════════════════════════════════════════════════ */
+        ═══════════════════════════════════════════════ */
         window.onload = function() {
-            const wglEl = document.getElementById('canvas-container');
-            const cssEl = document.getElementById('css-container');
-
-            const scene  = new THREE.Scene();
+            const scene = new THREE.Scene();
             scene.fog = new THREE.FogExp2(0x04040c, 0.001);
 
-            const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 1, 5000);
-            camera.position.set(0, 0, 1500);
+            const camera = new THREE.PerspectiveCamera(45, innerWidth/innerHeight, 1, 5000);
+            camera.position.set(0,0,1500);
 
-            /* WebGL renderer (background) */
-            const wgl = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-            wgl.setSize(innerWidth, innerHeight);
+            const wgl = new THREE.WebGLRenderer({antialias:true,alpha:true});
+            wgl.setSize(innerWidth,innerHeight);
             wgl.setPixelRatio(devicePixelRatio);
             wgl.setClearColor(0x04040c);
-            wglEl.appendChild(wgl.domElement);
+            EL('canvas-container').appendChild(wgl.domElement);
 
-            /* CSS3D renderer (crisp HTML content) */
             const css = new THREE.CSS3DRenderer();
-            css.setSize(innerWidth, innerHeight);
-            cssEl.appendChild(css.domElement);
+            css.setSize(innerWidth,innerHeight);
+            EL('css-container').appendChild(css.domElement);
 
-            /* Lights */
-            scene.add(new THREE.AmbientLight(0xffffff, 0.12));
-            const light1 = new THREE.PointLight(0xffd700, 1.8, 2500);
-            const light2 = new THREE.PointLight(0xcc44aa, 1.2, 2500);
-            scene.add(light1, light2);
+            scene.add(new THREE.AmbientLight(0xffffff,0.12));
+            const light1 = new THREE.PointLight(0xffd700,1.8,2500);
+            const light2 = new THREE.PointLight(0xcc44aa,1.2,2500);
+            scene.add(light1,light2);
 
-            /* CSS3D object from our slide content */
-            const slideDiv = document.getElementById('slide-content');
-            const cssObj   = new THREE.CSS3DObject(slideDiv);
-            cssObj.position.set(0, 0, 0);
+            const cssObj = new THREE.CSS3DObject(EL('slide-content'));
+            cssObj.position.set(0,0,0);
             scene.add(cssObj);
 
-            /* ─── Background shapes ─── */
+            /* Background shapes */
             const shapeMat = new THREE.MeshStandardMaterial({
-                color: 0xffffff, metalness: 0.92, roughness: 0.08,
-                transparent: true, opacity: 0.35,
+                color:0xffffff, metalness:0.92, roughness:0.08,
+                transparent:true, opacity:0.35
             });
             const geos = [
-                new THREE.IcosahedronGeometry(18, 0),
-                new THREE.TorusGeometry(14, 4, 16, 64),
-                new THREE.OctahedronGeometry(18, 0),
+                new THREE.IcosahedronGeometry(18,0),
+                new THREE.TorusGeometry(14,4,16,64),
+                new THREE.OctahedronGeometry(18,0)
             ];
             const shapes = [];
-            for (let i = 0; i < 35; i++) {
-                const m = new THREE.Mesh(geos[i % geos.length], shapeMat);
-                m.position.set(
-                    (Math.random() - 0.5) * 2200,
-                    (Math.random() - 0.5) * 2200,
-                    (Math.random() - 0.5) * 1800 - 500
-                );
-                m.rotation.set(Math.random()*Math.PI, Math.random()*Math.PI, 0);
-                m.scale.setScalar(Math.random() * 1.3 + 0.5);
-                shapes.push({ mesh: m, rx: (Math.random()-.5)*.015, ry: (Math.random()-.5)*.015 });
+            for (let i=0;i<35;i++) {
+                const m = new THREE.Mesh(geos[i%geos.length],shapeMat);
+                m.position.set((Math.random()-.5)*2200,(Math.random()-.5)*2200,(Math.random()-.5)*1800-500);
+                m.rotation.set(Math.random()*Math.PI,Math.random()*Math.PI,0);
+                m.scale.setScalar(Math.random()*1.3+0.5);
+                shapes.push({mesh:m,rx:(Math.random()-.5)*.015,ry:(Math.random()-.5)*.015});
                 scene.add(m);
             }
 
-            /* ─── Gold particles ─── */
-            const pCount = 600;
-            const pPos = new Float32Array(pCount * 3);
-            for (let i = 0; i < pCount; i++) {
-                pPos[i*3]   = (Math.random()-.5) * 3000;
-                pPos[i*3+1] = (Math.random()-.5) * 3000;
-                pPos[i*3+2] = (Math.random()-.5) * 2000 - 300;
+            /* Gold particles */
+            const pCount=600, pPos=new Float32Array(pCount*3);
+            for (let i=0;i<pCount;i++){
+                pPos[i*3]=(Math.random()-.5)*3000;
+                pPos[i*3+1]=(Math.random()-.5)*3000;
+                pPos[i*3+2]=(Math.random()-.5)*2000-300;
             }
-            const pGeo = new THREE.BufferGeometry();
-            pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
-            const pMat = new THREE.PointsMaterial({
-                color: 0xffd700, size: 2.5, transparent: true, opacity: 0.55,
-                blending: THREE.AdditiveBlending, depthWrite: false,
+            const pGeo=new THREE.BufferGeometry();
+            pGeo.setAttribute('position',new THREE.BufferAttribute(pPos,3));
+            const pMat=new THREE.PointsMaterial({
+                color:0xffd700,size:2.5,transparent:true,opacity:0.55,
+                blending:THREE.AdditiveBlending,depthWrite:false
             });
-            const particles = new THREE.Points(pGeo, pMat);
+            const particles=new THREE.Points(pGeo,pMat);
             scene.add(particles);
 
-            /* ─── Animation targets ─── */
-            const targetTblPos = new THREE.Vector3(0, 0, 0);
-            const targetCamPos = new THREE.Vector3(0, 0, 1500);
-            const targetTblRot = new THREE.Euler(0, 0, 0);
-            const targetQ      = new THREE.Quaternion();
+            /* Animation targets */
+            const tPos=new THREE.Vector3(0,0,0);
+            const tCam=new THREE.Vector3(0,0,1500);
+            const tRot=new THREE.Euler(0,0,0);
+            const tQ=new THREE.Quaternion();
+            const clock=new THREE.Clock();
 
-            const clock = new THREE.Clock();
-            const timerEl = document.getElementById('timer');
-
-            function animate() {
+            function animate(){
                 requestAnimationFrame(animate);
-                const t = clock.getElapsedTime();
+                const t=clock.getElapsedTime();
 
-                /* ─── Camera / table targets per mode ─── */
-                switch (currentMode) {
+                switch(currentMode){
                     case 'cinematic':
-                        targetTblRot.set(Math.cos(t*.3)*.07, Math.sin(t*.5)*.18, Math.sin(t*.2)*.03);
-                        targetTblPos.set(0, Math.sin(t*1.2)*25, Math.sin(t*.7)*70);
-                        targetCamPos.set(Math.sin(t*.25)*140, Math.cos(t*.35)*30, 1500);
+                        tRot.set(Math.cos(t*.3)*.07,Math.sin(t*.5)*.18,Math.sin(t*.2)*.03);
+                        tPos.set(0,Math.sin(t*1.2)*25,Math.sin(t*.7)*70);
+                        tCam.set(Math.sin(t*.25)*140,Math.cos(t*.35)*30,1500);
                         break;
                     case 'focus':
-                        targetTblRot.set(0, 0, 0);
-                        targetTblPos.set(0, 0, 380);
-                        targetCamPos.set(0, 0, 1500);
+                        tRot.set(0,0,0); tPos.set(0,0,380); tCam.set(0,0,1500);
                         break;
                     case 'drag':
-                        targetTblRot.set(dragRotation.y, dragRotation.x, 0);
-                        targetTblPos.set(0, 0, 0);
-                        targetCamPos.set(0, 0, 1500);
+                        tRot.set(dragRotation.y,dragRotation.x,0); tPos.set(0,0,0); tCam.set(0,0,1500);
                         break;
                     case 'hero':
-                        targetTblRot.set(-0.18, 0.32, 0.08);
-                        targetTblPos.set(0, 90, 180);
-                        targetCamPos.set(-380, -260, 1250);
+                        tRot.set(-0.18,0.32,0.08); tPos.set(0,90,180); tCam.set(-380,-260,1250);
                         break;
                     case 'orbit':
-                        targetTblRot.set(0, 0, 0);
-                        targetTblPos.set(0, 0, 0);
-                        targetCamPos.set(Math.sin(t*.25)*600, 120, Math.cos(t*.25)*1500);
+                        tRot.set(0,0,0); tPos.set(0,0,0);
+                        tCam.set(Math.sin(t*.2)*250,Math.cos(t*.15)*60,1500);
                         break;
                 }
 
-                /* Smooth lerp to targets */
-                cssObj.position.lerp(targetTblPos, 0.045);
-                camera.position.lerp(targetCamPos, 0.045);
-                targetQ.setFromEuler(targetTblRot);
-                cssObj.quaternion.slerp(targetQ, 0.045);
+                cssObj.position.lerp(tPos,0.045);
+                camera.position.lerp(tCam,0.045);
+                tQ.setFromEuler(tRot);
+                cssObj.quaternion.slerp(tQ,0.045);
+
+                /* Apply shake offset */
+                if(shakeIntensity>0.5){
+                    cssObj.position.x+=(Math.random()-.5)*shakeIntensity;
+                    cssObj.position.y+=(Math.random()-.5)*shakeIntensity;
+                    shakeIntensity*=0.88;
+                } else { shakeIntensity=0; }
+
+                /* Apply zoom punch */
+                if(zoomPunchOffset>1){
+                    cssObj.position.z+=zoomPunchOffset;
+                    zoomPunchOffset*=0.82;
+                } else { zoomPunchOffset=0; }
+
                 camera.lookAt(cssObj.position);
 
-                /* Animate lights */
-                light1.position.set(Math.sin(t*.6)*550, Math.cos(t*.5)*400, 250);
-                light2.position.set(Math.cos(t*.7)*550, Math.sin(t*.4)*400, 250);
+                light1.position.set(Math.sin(t*.6)*550,Math.cos(t*.5)*400,250);
+                light2.position.set(Math.cos(t*.7)*550,Math.sin(t*.4)*400,250);
+                shapes.forEach(s=>{s.mesh.rotation.x+=s.rx;s.mesh.rotation.y+=s.ry;});
+                particles.rotation.y=t*0.02;
+                pMat.opacity=0.4+Math.sin(t*0.8)*0.15;
 
-                /* Rotate background shapes */
-                shapes.forEach(s => { s.mesh.rotation.x += s.rx; s.mesh.rotation.y += s.ry; });
-
-                /* Slowly spin particles */
-                particles.rotation.y = t * 0.02;
-
-                /* Particle twinkle */
-                pMat.opacity = 0.4 + Math.sin(t * 0.8) * 0.15;
-
-                timerEl.textContent = t.toFixed(1) + 's';
-
-                wgl.render(scene, camera);
-                css.render(scene, camera);
+                EL('timer').textContent=t.toFixed(1)+'s';
+                wgl.render(scene,camera);
+                css.render(scene,camera);
             }
 
-            /* Resize */
-            window.addEventListener('resize', () => {
-                camera.aspect = innerWidth / innerHeight;
+            window.addEventListener('resize',()=>{
+                camera.aspect=innerWidth/innerHeight;
                 camera.updateProjectionMatrix();
-                wgl.setSize(innerWidth, innerHeight);
-                css.setSize(innerWidth, innerHeight);
+                wgl.setSize(innerWidth,innerHeight);
+                css.setSize(innerWidth,innerHeight);
             });
 
             animate();
-
-            /* Auto-play full sequence on load */
-            setTimeout(animAll, 600);
+            setTimeout(animAll,600);
         };
     </script>
 </body>
