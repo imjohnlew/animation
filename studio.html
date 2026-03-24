@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Animation Studio</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/renderers/CSS3DRenderer.js"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #04040c;
+            color: #fff;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        #canvas-container { position: absolute; top:0; left:0; width:100%; height:100%; z-index:0; }
+        #css-container    { position: absolute; top:0; left:0; width:100%; height:100%; z-index:10; }
+
+        /* ─── Slide Content (becomes a CSS3D object) ─── */
+        #slide-content {
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            gap: 1.8rem; width: 1050px; padding: 2rem;
+            pointer-events: auto;
+        }
+
+        /* Badge */
+        .badge {
+            display: inline-flex; flex-direction: column; align-items: center;
+            padding: 0.65rem 2.8rem; border-radius: 2rem;
+            background: linear-gradient(135deg, #f5d05a, #b8860b);
+            box-shadow: 0 0 30px rgba(255,215,0,0.3), 0 0 60px rgba(255,215,0,0.1);
+        }
+        .badge-main { font-size: 1.6rem; font-weight: 700; color: #1a0d00; letter-spacing: 0.12em; }
+        .badge-sub  { font-size: 0.72rem; color: #3a2000; margin-top: -1px; }
+
+        /* Banner */
+        .banner {
+            width: 100%; max-width: 960px;
+            padding: 2.2rem 3rem; text-align: center;
+            background: rgba(8,8,18,0.88);
+            border: 2px solid rgba(200,160,0,0.45);
+            border-radius: 0.5rem; position: relative;
+            box-shadow: 0 0 50px rgba(200,160,0,0.08), inset 0 0 40px rgba(0,0,0,0.4);
+        }
+        .banner::before {
+            content: ''; position: absolute; inset: 7px;
+            border: 1px solid rgba(200,160,0,0.12); border-radius: 3px;
+            pointer-events: none;
+        }
+        .ornament-row { display: flex; align-items: center; justify-content: center; gap: 0.8rem; margin-bottom: 0.6rem; }
+        .ornament-line { width: 140px; height: 1px; background: linear-gradient(90deg, transparent, rgba(200,160,0,0.45), transparent); }
+        .ornament-diamond { width: 8px; height: 8px; background: #c8a000; transform: rotate(45deg); }
+        .banner-title {
+            font-size: 3.8rem; font-weight: 800; letter-spacing: 0.18em;
+            background: linear-gradient(180deg, #fff 0%, #e8e8e8 40%, #999 100%);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-clip: text;
+            filter: drop-shadow(3px 4px 5px rgba(0,0,0,0.6));
+        }
+        .banner-sub { font-size: 0.9rem; color: rgba(190,155,80,0.72); font-style: italic; margin-top: 0.3rem; }
+
+        /* Cards */
+        .cards-row { display: flex; gap: 1.4rem; justify-content: center; }
+        .card {
+            width: 300px; padding: 2rem 1.5rem; border-radius: 1rem;
+            text-align: center; position: relative; overflow: hidden;
+        }
+        .card::before {
+            content: ''; position: absolute; inset: 0; border-radius: 1rem;
+            background: linear-gradient(180deg, rgba(255,255,255,0.1) 0%, transparent 40%);
+            pointer-events: none;
+        }
+        .card-blue {
+            background: linear-gradient(135deg, #1a2a7e, #3c5cd2);
+            border: 1px solid rgba(100,150,255,0.4);
+            box-shadow: 0 0 30px rgba(60,90,210,0.2);
+        }
+        .card-red {
+            background: linear-gradient(135deg, #7e1a38, #d23c68);
+            border: 1px solid rgba(255,100,150,0.4);
+            box-shadow: 0 0 30px rgba(210,60,100,0.2);
+        }
+        .card-top-line { width: 50px; height: 1px; background: rgba(255,255,255,0.22); margin: 0 auto 1rem; }
+        .card h2 { font-size: 2.2rem; font-weight: 700; letter-spacing: 0.6em; color: #fff; }
+        .card-divider { width: 55%; height: 1px; background: rgba(255,255,255,0.15); margin: 0.8rem auto; }
+        .card p { font-size: 0.85rem; color: rgba(255,255,255,0.6); }
+
+        /* Caption */
+        .caption {
+            font-size: 1.7rem; font-weight: 600;
+            color: rgba(255,255,255,0.88);
+            width: 100%; max-width: 880px; padding-left: 0.5rem;
+        }
+
+        /* ─── Animations ─── */
+        .slide-el { opacity: 0; }
+
+        @keyframes badgeDrop {
+            0%   { opacity: 0; transform: translateY(-70px) scale(0.7); }
+            65%  { opacity: 1; transform: translateY(6px) scale(1.03); }
+            100% { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        @keyframes bannerSlide {
+            0%   { opacity: 0; transform: translateX(-140px); }
+            100% { opacity: 1; transform: translateX(0); }
+        }
+        @keyframes cardFlyLeft {
+            0%   { opacity: 0; transform: translateX(-220px) rotateY(18deg); }
+            100% { opacity: 1; transform: translateX(0) rotateY(0); }
+        }
+        @keyframes cardFlyRight {
+            0%   { opacity: 0; transform: translateX(220px) rotateY(-18deg); }
+            100% { opacity: 1; transform: translateX(0) rotateY(0); }
+        }
+        @keyframes captionRise {
+            0%   { opacity: 0; transform: translateY(50px); }
+            100% { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes pulseGlow {
+            0%, 100% { box-shadow: 0 0 30px rgba(255,215,0,0.3), 0 0 60px rgba(255,215,0,0.1); }
+            50%      { box-shadow: 0 0 50px rgba(255,215,0,0.6), 0 0 90px rgba(255,215,0,0.2); }
+        }
+        @keyframes bannerGlow {
+            0%, 100% { border-color: rgba(200,160,0,0.45); box-shadow: 0 0 50px rgba(200,160,0,0.08); }
+            50%      { border-color: rgba(200,160,0,0.8);  box-shadow: 0 0 70px rgba(200,160,0,0.2); }
+        }
+        @keyframes shimmer {
+            0%   { background-position: -200% 0; }
+            100% { background-position: 200% 0; }
+        }
+        @keyframes cardPulseBlue {
+            0%, 100% { box-shadow: 0 0 30px rgba(60,90,210,0.2); }
+            50%      { box-shadow: 0 0 55px rgba(60,90,210,0.45); }
+        }
+        @keyframes cardPulseRed {
+            0%, 100% { box-shadow: 0 0 30px rgba(210,60,100,0.2); }
+            50%      { box-shadow: 0 0 55px rgba(210,60,100,0.45); }
+        }
+    </style>
+</head>
+<body>
+    <!-- WebGL Background -->
+    <div id="canvas-container"></div>
+    <!-- CSS3D Layer (crisp HTML in 3D) -->
+    <div id="css-container"></div>
+
+    <!-- ═══ SLIDE CONTENT ═══ (edit text/structure here) -->
+    <div id="slide-content">
+        <div id="el-badge" class="badge slide-el">
+            <span class="badge-main">问题一</span>
+            <span class="badge-sub">Question One</span>
+        </div>
+
+        <div id="el-banner" class="banner slide-el">
+            <div class="ornament-row">
+                <div class="ornament-line"></div>
+                <div class="ornament-diamond"></div>
+                <div class="ornament-line"></div>
+            </div>
+            <div class="banner-title">为什么涨</div>
+            <div class="banner-sub">Why the Rally?</div>
+        </div>
+
+        <div class="cards-row">
+            <div id="el-card-l" class="card card-blue slide-el">
+                <div class="card-top-line"></div>
+                <h2>短 期</h2>
+                <div class="card-divider"></div>
+                <p>Short Term</p>
+            </div>
+            <div id="el-card-r" class="card card-red slide-el">
+                <div class="card-top-line"></div>
+                <h2>长 期</h2>
+                <div class="card-divider"></div>
+                <p>Long Term</p>
+            </div>
+        </div>
+
+        <div id="el-caption" class="caption slide-el">
+            在这一个月的时间尺度之内
+        </div>
+    </div>
+
+    <!-- ═══ CONTROLS ═══ -->
+    <div class="fixed bottom-5 left-1/2 -translate-x-1/2 z-[100] flex flex-col items-center gap-2.5 pointer-events-auto w-full px-4">
+        <!-- Camera modes -->
+        <div class="flex flex-wrap justify-center gap-2">
+            <button onclick="setMode('cinematic',this)" class="mode-btn active bg-cyan-500/30 text-cyan-200 border-cyan-400 hover:bg-cyan-500/50 px-4 py-1.5 rounded-full backdrop-blur-md border transition shadow-[0_0_12px_rgba(0,240,255,0.35)] font-medium text-xs">🎬 Cinematic</button>
+            <button onclick="setMode('focus',this)"     class="mode-btn bg-white/10 text-white border-white/20 hover:bg-white/20 px-4 py-1.5 rounded-full backdrop-blur-md border transition font-medium text-xs">📖 Focus Read</button>
+            <button onclick="setMode('drag',this)"      class="mode-btn bg-white/10 text-white border-white/20 hover:bg-white/20 px-4 py-1.5 rounded-full backdrop-blur-md border transition font-medium text-xs">🖱️ Interactive</button>
+            <button onclick="setMode('hero',this)"      class="mode-btn bg-white/10 text-white border-white/20 hover:bg-white/20 px-4 py-1.5 rounded-full backdrop-blur-md border transition font-medium text-xs">🎭 Hero Tilt</button>
+            <button onclick="setMode('orbit',this)"     class="mode-btn bg-white/10 text-white border-white/20 hover:bg-white/20 px-4 py-1.5 rounded-full backdrop-blur-md border transition font-medium text-xs">🌀 Orbit</button>
+        </div>
+        <!-- Element animations -->
+        <div class="flex flex-wrap justify-center gap-2">
+            <button onclick="animBadge()"   class="bg-yellow-500/25 text-yellow-200 border-yellow-400/60 hover:bg-yellow-500/40 px-4 py-1.5 rounded-full backdrop-blur-md border transition shadow-[0_0_10px_rgba(234,179,8,0.25)] font-medium text-xs">🏷️ Badge</button>
+            <button onclick="animBanner()"  class="bg-amber-500/25 text-amber-200 border-amber-400/60 hover:bg-amber-500/40 px-4 py-1.5 rounded-full backdrop-blur-md border transition shadow-[0_0_10px_rgba(217,119,6,0.25)] font-medium text-xs">📜 Banner</button>
+            <button onclick="animCards()"   class="bg-purple-500/25 text-purple-200 border-purple-400/60 hover:bg-purple-500/40 px-4 py-1.5 rounded-full backdrop-blur-md border transition shadow-[0_0_10px_rgba(168,85,247,0.25)] font-medium text-xs">🎴 Cards</button>
+            <button onclick="animCaption()" class="bg-blue-500/25 text-blue-200 border-blue-400/60 hover:bg-blue-500/40 px-4 py-1.5 rounded-full backdrop-blur-md border transition shadow-[0_0_10px_rgba(59,130,246,0.25)] font-medium text-xs">💬 Caption</button>
+            <button onclick="animGlow()"    class="bg-pink-500/25 text-pink-200 border-pink-400/60 hover:bg-pink-500/40 px-4 py-1.5 rounded-full backdrop-blur-md border transition shadow-[0_0_10px_rgba(236,72,153,0.25)] font-medium text-xs">✨ Glow Pulse</button>
+            <button onclick="animAll()"     class="bg-green-500/25 text-green-200 border-green-400/60 hover:bg-green-500/40 px-4 py-1.5 rounded-full backdrop-blur-md border transition shadow-[0_0_10px_rgba(34,197,94,0.25)] font-medium text-xs">🎬 Full Sequence</button>
+            <button onclick="resetAll()"    class="bg-white/10 text-gray-300 border-white/20 hover:bg-white/20 px-4 py-1.5 rounded-full backdrop-blur-md border transition font-medium text-xs">🔄 Reset</button>
+        </div>
+    </div>
+
+    <!-- Timer -->
+    <div id="timer" class="fixed top-3 left-3 z-[100] text-white/30 text-[11px] font-mono">0.0s</div>
+
+    <script>
+        /* ═══════════════════════════════════════════════════
+           GLOBAL STATE
+        ═══════════════════════════════════════════════════ */
+        let currentMode = 'cinematic';
+        let isDragging = false;
+        let dragRotation = { x: 0, y: 0 };
+        let prevMouse = { x: 0, y: 0 };
+
+        /* ─── Mode switching ─── */
+        window.setMode = function(mode, el) {
+            currentMode = mode;
+            if (mode === 'drag') dragRotation = { x: 0, y: 0 };
+            document.querySelectorAll('.mode-btn').forEach(b => {
+                b.className = "mode-btn bg-white/10 text-white border-white/20 hover:bg-white/20 px-4 py-1.5 rounded-full backdrop-blur-md border transition font-medium text-xs";
+            });
+            el.className = "mode-btn active bg-cyan-500/30 text-cyan-200 border-cyan-400 hover:bg-cyan-500/50 px-4 py-1.5 rounded-full backdrop-blur-md border transition shadow-[0_0_12px_rgba(0,240,255,0.35)] font-medium text-xs";
+        };
+
+        /* ─── Reusable anim trigger ─── */
+        function triggerAnim(el, animName, duration, ease) {
+            el.style.animation = 'none';
+            el.style.opacity = '0';
+            requestAnimationFrame(() => {
+                el.style.animation = `${animName} ${duration}s ${ease} forwards`;
+            });
+        }
+
+        /* ─── Element animation triggers ─── */
+        window.animBadge = function() {
+            triggerAnim(document.getElementById('el-badge'), 'badgeDrop', 0.75, 'cubic-bezier(0.34,1.56,0.64,1)');
+        };
+        window.animBanner = function() {
+            triggerAnim(document.getElementById('el-banner'), 'bannerSlide', 0.7, 'cubic-bezier(0.22,0.61,0.36,1)');
+        };
+        window.animCards = function() {
+            triggerAnim(document.getElementById('el-card-l'), 'cardFlyLeft',  0.65, 'cubic-bezier(0.22,0.61,0.36,1)');
+            setTimeout(() => {
+                triggerAnim(document.getElementById('el-card-r'), 'cardFlyRight', 0.65, 'cubic-bezier(0.22,0.61,0.36,1)');
+            }, 120);
+        };
+        window.animCaption = function() {
+            triggerAnim(document.getElementById('el-caption'), 'captionRise', 0.6, 'cubic-bezier(0.22,0.61,0.36,1)');
+        };
+        window.animGlow = function() {
+            const badge  = document.getElementById('el-badge');
+            const banner = document.getElementById('el-banner');
+            const cardL  = document.getElementById('el-card-l');
+            const cardR  = document.getElementById('el-card-r');
+            badge.style.animation  = 'pulseGlow 1.8s ease-in-out infinite';
+            badge.style.opacity = '1';
+            banner.style.animation = 'bannerGlow 2s ease-in-out infinite';
+            banner.style.opacity = '1';
+            cardL.style.animation  = 'cardPulseBlue 2s ease-in-out infinite 0.2s';
+            cardL.style.opacity = '1';
+            cardR.style.animation  = 'cardPulseRed 2s ease-in-out infinite 0.4s';
+            cardR.style.opacity = '1';
+        };
+        window.animAll = function() {
+            resetAll();
+            setTimeout(animBadge,    200);
+            setTimeout(animBanner,   750);
+            setTimeout(animCards,   1450);
+            setTimeout(animCaption, 2200);
+        };
+        window.resetAll = function() {
+            document.querySelectorAll('.slide-el').forEach(el => {
+                el.style.animation = 'none';
+                el.style.opacity = '0';
+            });
+        };
+
+        /* ─── Drag handlers ─── */
+        function dragStart(x, y)  { isDragging = true; prevMouse = { x, y }; }
+        function dragMove(x, y) {
+            if (!isDragging || currentMode !== 'drag') { prevMouse = { x, y }; return; }
+            dragRotation.x += (x - prevMouse.x) * 0.005;
+            dragRotation.y += (y - prevMouse.y) * 0.005;
+            dragRotation.y = Math.max(-Math.PI/3, Math.min(Math.PI/3, dragRotation.y));
+            prevMouse = { x, y };
+        }
+        function dragEnd() { isDragging = false; }
+
+        document.addEventListener('mousedown', e => dragStart(e.clientX, e.clientY));
+        document.addEventListener('mousemove', e => dragMove(e.clientX, e.clientY));
+        document.addEventListener('mouseup', dragEnd);
+        document.addEventListener('touchstart', e => dragStart(e.touches[0].clientX, e.touches[0].clientY), { passive: true });
+        document.addEventListener('touchmove',  e => dragMove(e.touches[0].clientX, e.touches[0].clientY),  { passive: true });
+        document.addEventListener('touchend', dragEnd);
+
+        /* ═══════════════════════════════════════════════════
+           THREE.JS SCENE
+        ═══════════════════════════════════════════════════ */
+        window.onload = function() {
+            const wglEl = document.getElementById('canvas-container');
+            const cssEl = document.getElementById('css-container');
+
+            const scene  = new THREE.Scene();
+            scene.fog = new THREE.FogExp2(0x04040c, 0.001);
+
+            const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 1, 5000);
+            camera.position.set(0, 0, 1500);
+
+            /* WebGL renderer (background) */
+            const wgl = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            wgl.setSize(innerWidth, innerHeight);
+            wgl.setPixelRatio(devicePixelRatio);
+            wgl.setClearColor(0x04040c);
+            wglEl.appendChild(wgl.domElement);
+
+            /* CSS3D renderer (crisp HTML content) */
+            const css = new THREE.CSS3DRenderer();
+            css.setSize(innerWidth, innerHeight);
+            cssEl.appendChild(css.domElement);
+
+            /* Lights */
+            scene.add(new THREE.AmbientLight(0xffffff, 0.12));
+            const light1 = new THREE.PointLight(0xffd700, 1.8, 2500);
+            const light2 = new THREE.PointLight(0xcc44aa, 1.2, 2500);
+            scene.add(light1, light2);
+
+            /* CSS3D object from our slide content */
+            const slideDiv = document.getElementById('slide-content');
+            const cssObj   = new THREE.CSS3DObject(slideDiv);
+            cssObj.position.set(0, 0, 0);
+            scene.add(cssObj);
+
+            /* ─── Background shapes ─── */
+            const shapeMat = new THREE.MeshStandardMaterial({
+                color: 0xffffff, metalness: 0.92, roughness: 0.08,
+                transparent: true, opacity: 0.35,
+            });
+            const geos = [
+                new THREE.IcosahedronGeometry(18, 0),
+                new THREE.TorusGeometry(14, 4, 16, 64),
+                new THREE.OctahedronGeometry(18, 0),
+            ];
+            const shapes = [];
+            for (let i = 0; i < 35; i++) {
+                const m = new THREE.Mesh(geos[i % geos.length], shapeMat);
+                m.position.set(
+                    (Math.random() - 0.5) * 2200,
+                    (Math.random() - 0.5) * 2200,
+                    (Math.random() - 0.5) * 1800 - 500
+                );
+                m.rotation.set(Math.random()*Math.PI, Math.random()*Math.PI, 0);
+                m.scale.setScalar(Math.random() * 1.3 + 0.5);
+                shapes.push({ mesh: m, rx: (Math.random()-.5)*.015, ry: (Math.random()-.5)*.015 });
+                scene.add(m);
+            }
+
+            /* ─── Gold particles ─── */
+            const pCount = 600;
+            const pPos = new Float32Array(pCount * 3);
+            for (let i = 0; i < pCount; i++) {
+                pPos[i*3]   = (Math.random()-.5) * 3000;
+                pPos[i*3+1] = (Math.random()-.5) * 3000;
+                pPos[i*3+2] = (Math.random()-.5) * 2000 - 300;
+            }
+            const pGeo = new THREE.BufferGeometry();
+            pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
+            const pMat = new THREE.PointsMaterial({
+                color: 0xffd700, size: 2.5, transparent: true, opacity: 0.55,
+                blending: THREE.AdditiveBlending, depthWrite: false,
+            });
+            const particles = new THREE.Points(pGeo, pMat);
+            scene.add(particles);
+
+            /* ─── Animation targets ─── */
+            const targetTblPos = new THREE.Vector3(0, 0, 0);
+            const targetCamPos = new THREE.Vector3(0, 0, 1500);
+            const targetTblRot = new THREE.Euler(0, 0, 0);
+            const targetQ      = new THREE.Quaternion();
+
+            const clock = new THREE.Clock();
+            const timerEl = document.getElementById('timer');
+
+            function animate() {
+                requestAnimationFrame(animate);
+                const t = clock.getElapsedTime();
+
+                /* ─── Camera / table targets per mode ─── */
+                switch (currentMode) {
+                    case 'cinematic':
+                        targetTblRot.set(Math.cos(t*.3)*.07, Math.sin(t*.5)*.18, Math.sin(t*.2)*.03);
+                        targetTblPos.set(0, Math.sin(t*1.2)*25, Math.sin(t*.7)*70);
+                        targetCamPos.set(Math.sin(t*.25)*140, Math.cos(t*.35)*30, 1500);
+                        break;
+                    case 'focus':
+                        targetTblRot.set(0, 0, 0);
+                        targetTblPos.set(0, 0, 380);
+                        targetCamPos.set(0, 0, 1500);
+                        break;
+                    case 'drag':
+                        targetTblRot.set(dragRotation.y, dragRotation.x, 0);
+                        targetTblPos.set(0, 0, 0);
+                        targetCamPos.set(0, 0, 1500);
+                        break;
+                    case 'hero':
+                        targetTblRot.set(-0.18, 0.32, 0.08);
+                        targetTblPos.set(0, 90, 180);
+                        targetCamPos.set(-380, -260, 1250);
+                        break;
+                    case 'orbit':
+                        targetTblRot.set(0, 0, 0);
+                        targetTblPos.set(0, 0, 0);
+                        targetCamPos.set(Math.sin(t*.25)*600, 120, Math.cos(t*.25)*1500);
+                        break;
+                }
+
+                /* Smooth lerp to targets */
+                cssObj.position.lerp(targetTblPos, 0.045);
+                camera.position.lerp(targetCamPos, 0.045);
+                targetQ.setFromEuler(targetTblRot);
+                cssObj.quaternion.slerp(targetQ, 0.045);
+                camera.lookAt(cssObj.position);
+
+                /* Animate lights */
+                light1.position.set(Math.sin(t*.6)*550, Math.cos(t*.5)*400, 250);
+                light2.position.set(Math.cos(t*.7)*550, Math.sin(t*.4)*400, 250);
+
+                /* Rotate background shapes */
+                shapes.forEach(s => { s.mesh.rotation.x += s.rx; s.mesh.rotation.y += s.ry; });
+
+                /* Slowly spin particles */
+                particles.rotation.y = t * 0.02;
+
+                /* Particle twinkle */
+                pMat.opacity = 0.4 + Math.sin(t * 0.8) * 0.15;
+
+                timerEl.textContent = t.toFixed(1) + 's';
+
+                wgl.render(scene, camera);
+                css.render(scene, camera);
+            }
+
+            /* Resize */
+            window.addEventListener('resize', () => {
+                camera.aspect = innerWidth / innerHeight;
+                camera.updateProjectionMatrix();
+                wgl.setSize(innerWidth, innerHeight);
+                css.setSize(innerWidth, innerHeight);
+            });
+
+            animate();
+
+            /* Auto-play full sequence on load */
+            setTimeout(animAll, 600);
+        };
+    </script>
+</body>
+</html>

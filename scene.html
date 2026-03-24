@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Animation Studio</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #000; overflow: hidden; }
+    canvas { display: block; }
+    #ui {
+      position: fixed; bottom: 20px; left: 50%;
+      transform: translateX(-50%);
+      display: flex; gap: 8px; z-index: 10;
+    }
+    #ui button {
+      padding: 7px 20px;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.2);
+      color: white; cursor: pointer;
+      border-radius: 6px; font-size: 13px;
+      transition: background 0.15s;
+    }
+    #ui button:hover { background: rgba(255,255,255,0.18); }
+    #timer {
+      position: fixed; top: 12px; left: 12px;
+      color: rgba(255,255,255,0.35);
+      font-size: 11px; font-family: monospace; z-index: 10;
+    }
+    #hint {
+      position: fixed; top: 12px; right: 12px;
+      color: rgba(255,255,255,0.25);
+      font-size: 11px; font-family: monospace;
+      text-align: right; line-height: 1.6; z-index: 10;
+    }
+  </style>
+</head>
+<body>
+  <div id="ui">
+    <button id="btn-restart">↺ Restart</button>
+    <button id="btn-pp">⏸ Pause</button>
+  </div>
+  <div id="timer">0.00s</div>
+  <div id="hint">Record with OBS<br>1920×1080 recommended</div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"
+    }
+  }
+  </script>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+    import { RenderPass }     from 'three/addons/postprocessing/RenderPass.js';
+    import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+    // ═══════════════════════════════════════════════════════
+    //  EDIT THIS to change what appears on screen
+    // ═══════════════════════════════════════════════════════
+    const SLIDE = {
+      badge:   { text: '问题一',           sub: 'Question One'   },
+      banner:  { text: '为什么涨',          sub: 'Why the Rally?' },
+      cards: [
+        { text: '短期', sub: 'Short Term', color: 'blue' },
+        { text: '长期', sub: 'Long Term',  color: 'red'  },
+      ],
+      caption: { text: '在这一个月的时间尺度之内' },
+    };
+    // ═══════════════════════════════════════════════════════
+
+    const CAM_H = 20;
+    const CAM_W = CAM_H * (16 / 9);  // ≈ 35.56
+    const PPU   = 110;                // pixels per world unit
+
+    // ── Renderer ────────────────────────────────────────────
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    document.body.appendChild(renderer.domElement);
+
+    const scene  = new THREE.Scene();
+    scene.background = new THREE.Color('#05050f');
+
+    const camera = new THREE.OrthographicCamera(
+      -CAM_W/2, CAM_W/2, CAM_H/2, -CAM_H/2, -100, 100
+    );
+
+    const composer = new EffectComposer(renderer);
+    composer.addPass(new RenderPass(scene, camera));
+    composer.addPass(new UnrealBloomPass(
+      new THREE.Vector2(window.innerWidth, window.innerHeight),
+      0.85, 0.5, 0.28
+    ));
+
+    function onResize() {
+      const W = window.innerWidth, H = window.innerHeight;
+      renderer.setSize(W, H);
+      composer.setSize(W, H);
+      const winAR = W / H, camAR = CAM_W / CAM_H;
+      if (winAR >= camAR) {
+        const s = winAR / camAR;
+        camera.left = -CAM_W/2*s; camera.right = CAM_W/2*s;
+        camera.top  =  CAM_H/2;   camera.bottom = -CAM_H/2;
+      } else {
+        const s = camAR / winAR;
+        camera.left = -CAM_W/2;  camera.right =  CAM_W/2;
+        camera.top  =  CAM_H/2*s; camera.bottom = -CAM_H/2*s;
+      }
+      camera.updateProjectionMatrix();
+    }
+    window.addEventListener('resize', onResize);
+    onResize();
+
+    // ── Helpers ──────────────────────────────────────────────
+    function tex(wU, hU, fn) {
+      const W = Math.round(wU * PPU), H = Math.round(hU * PPU);
+      const cv = document.createElement('canvas');
+      cv.width = W; cv.height = H;
+      fn(cv.getContext('2d'), W, H);
+      return new THREE.CanvasTexture(cv);
+    }
+
+    function mesh(wU, hU, t, z = 0) {
+      const mat = new THREE.MeshBasicMaterial({
+        map: t, transparent: true, depthWrite: false, opacity: 0
+      });
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(wU, hU), mat);
+      m.position.z = z;
+      scene.add(m);
+      return m;
+    }
+
+    function rrect(ctx, x, y, w, h, r) {
+      ctx.beginPath();
+      ctx.moveTo(x+r, y);
+      ctx.arcTo(x+w, y,   x+w, y+h, r);
+      ctx.arcTo(x+w, y+h, x,   y+h, r);
+      ctx.arcTo(x,   y+h, x,   y,   r);
+      ctx.arcTo(x,   y,   x+w, y,   r);
+      ctx.closePath();
+    }
+
+    // ── Particles ────────────────────────────────────────────
+    const N = 700;
+    const pPos = new Float32Array(N * 3);
+    const pCol = new Float32Array(N * 3);
+    const pVel = [];
+    const palette = [[1,.84,0],[1,1,1],[.8,.65,.1],[1,.92,.55]];
+
+    for (let i = 0; i < N; i++) {
+      pPos[i*3]   = (Math.random()-.5) * CAM_W * 1.1;
+      pPos[i*3+1] = (Math.random()-.5) * CAM_H * 1.1;
+      pPos[i*3+2] = -2 - Math.random()*3;
+      const c = palette[i % palette.length];
+      pCol[i*3]=c[0]; pCol[i*3+1]=c[1]; pCol[i*3+2]=c[2];
+      pVel.push({ dx:(Math.random()-.5)*.006, dy:Math.random()*.004+.002 });
+    }
+
+    const pGeo = new THREE.BufferGeometry();
+    pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
+    pGeo.setAttribute('color',    new THREE.BufferAttribute(pCol, 3));
+    const pMat = new THREE.PointsMaterial({
+      size:.07, vertexColors:true, transparent:true, opacity:.5,
+      blending:THREE.AdditiveBlending, depthWrite:false,
+    });
+    scene.add(new THREE.Points(pGeo, pMat));
+
+    function tickParticles() {
+      for (let i=0; i<N; i++) {
+        pPos[i*3]   += pVel[i].dx;
+        pPos[i*3+1] += pVel[i].dy;
+        if (pPos[i*3+1] >  CAM_H*.6) pPos[i*3+1] = -CAM_H*.6;
+        if (pPos[i*3]   >  CAM_W*.6) pPos[i*3]   = -CAM_W*.6;
+        if (pPos[i*3]   < -CAM_W*.6) pPos[i*3]   =  CAM_W*.6;
+      }
+      pGeo.attributes.position.needsUpdate = true;
+      pMat.opacity = .38 + Math.sin(Date.now()*.0008)*.12;
+    }
+
+    // ── Components ───────────────────────────────────────────
+
+    function makeBadge({ text, sub }) {
+      const W=5, H=1.6;
+      const t = tex(W, H, (ctx, w, h) => {
+        rrect(ctx, 0, 0, w, h, h*.3);
+        const g = ctx.createLinearGradient(0,0,0,h);
+        g.addColorStop(0,'#f5d05a'); g.addColorStop(1,'#b8860b');
+        ctx.fillStyle=g; ctx.fill();
+        rrect(ctx,3,3,w-6,h-6,h*.3-2);
+        ctx.strokeStyle='rgba(255,240,160,.5)'; ctx.lineWidth=2; ctx.stroke();
+        ctx.textAlign='center'; ctx.textBaseline='middle';
+        ctx.fillStyle='#1a0d00';
+        ctx.font=`bold ${h*.38}px serif`; ctx.fillText(text, w/2, h*.42);
+        ctx.fillStyle='#3a2000';
+        ctx.font=`${h*.2}px sans-serif`; ctx.fillText(sub, w/2, h*.77);
+      });
+      const m = mesh(W, H, t, .5);
+      m.position.set(0, 8.0, .5);
+      return m;
+    }
+
+    function makeBanner({ text, sub }) {
+      const W=CAM_W*.88, H=5;
+      const t = tex(W, H, (ctx, w, h) => {
+        const bg = ctx.createLinearGradient(0,0,w,h);
+        bg.addColorStop(0,'#070712'); bg.addColorStop(.5,'#0d0d1c'); bg.addColorStop(1,'#070712');
+        ctx.fillStyle=bg; ctx.fillRect(0,0,w,h);
+
+        ctx.strokeStyle='#c8a000'; ctx.lineWidth=3;
+        ctx.strokeRect(3,3,w-6,h-6);
+        ctx.strokeStyle='rgba(200,160,0,.22)'; ctx.lineWidth=1;
+        ctx.strokeRect(10,10,w-20,h-20);
+
+        // decorative top line + diamond
+        const ly = h*.22;
+        ctx.strokeStyle='rgba(200,160,0,.4)'; ctx.lineWidth=1;
+        [[.07,.38],[.62,.93]].forEach(([a,b])=>{
+          ctx.beginPath(); ctx.moveTo(w*a,ly); ctx.lineTo(w*b,ly); ctx.stroke();
+        });
+        const ds=7;
+        ctx.beginPath();
+        ctx.moveTo(w/2,ly-ds); ctx.lineTo(w/2+ds,ly);
+        ctx.lineTo(w/2,ly+ds); ctx.lineTo(w/2-ds,ly); ctx.closePath();
+        ctx.fillStyle='#c8a000'; ctx.fill();
+
+        // main text - metallic
+        ctx.font=`bold ${h*.4}px serif`;
+        ctx.textAlign='center'; ctx.textBaseline='middle';
+        ctx.fillStyle='rgba(0,0,0,.55)';
+        ctx.fillText(text, w/2+3, h*.54+3);
+        const tg = ctx.createLinearGradient(0,h*.33,0,h*.72);
+        tg.addColorStop(0,'#ffffff'); tg.addColorStop(.45,'#e0e0e0'); tg.addColorStop(1,'#888');
+        ctx.fillStyle=tg; ctx.fillText(text, w/2, h*.54);
+
+        ctx.fillStyle='rgba(190,155,80,.75)';
+        ctx.font=`italic ${h*.12}px serif`;
+        ctx.fillText(sub, w/2, h*.83);
+      });
+      const m = mesh(W, H, t, 0);
+      m.position.set(0, 4.2, 0);
+      return m;
+    }
+
+    function makeCardPair(cards) {
+      const group = new THREE.Group();
+      const W=11, H=4.5, GAP=.8;
+
+      cards.forEach((def, i) => {
+        const blue = def.color==='blue';
+        const t = tex(W, H, (ctx, w, h) => {
+          rrect(ctx,0,0,w,h,18);
+          const g = ctx.createLinearGradient(0,0,w,h);
+          if (blue){ g.addColorStop(0,'#1b2b80'); g.addColorStop(1,'#3d5dd4'); }
+          else     { g.addColorStop(0,'#801b3a'); g.addColorStop(1,'#d43d6a'); }
+          ctx.fillStyle=g; ctx.fill();
+
+          rrect(ctx,0,0,w,h,18);
+          ctx.strokeStyle=blue?'rgba(100,150,255,.55)':'rgba(255,100,150,.55)';
+          ctx.lineWidth=3; ctx.stroke();
+
+          // top highlight
+          rrect(ctx,0,0,w,h,18);
+          const hl = ctx.createLinearGradient(0,0,0,h*.35);
+          hl.addColorStop(0,'rgba(255,255,255,.13)'); hl.addColorStop(1,'rgba(255,255,255,0)');
+          ctx.fillStyle=hl; ctx.fill();
+
+          // top ornament line
+          ctx.strokeStyle='rgba(255,255,255,.22)'; ctx.lineWidth=1;
+          ctx.beginPath(); ctx.moveTo(w*.28,14); ctx.lineTo(w*.72,14); ctx.stroke();
+
+          // main text
+          ctx.fillStyle='#fff';
+          ctx.font=`bold ${h*.3}px serif`;
+          ctx.textAlign='center'; ctx.textBaseline='middle';
+          const display = def.text.length===2
+            ? def.text[0]+'\u2002'+def.text[1] : def.text;
+          ctx.fillText(display, w/2, h*.42);
+
+          // divider
+          ctx.strokeStyle='rgba(255,255,255,.18)'; ctx.lineWidth=1;
+          ctx.beginPath(); ctx.moveTo(w*.2,h*.64); ctx.lineTo(w*.8,h*.64); ctx.stroke();
+
+          ctx.fillStyle='rgba(255,255,255,.65)';
+          ctx.font=`${h*.13}px sans-serif`;
+          ctx.fillText(def.sub, w/2, h*.8);
+        });
+
+        const m = new THREE.Mesh(
+          new THREE.PlaneGeometry(W, H),
+          new THREE.MeshBasicMaterial({ map:t, transparent:true, depthWrite:false, opacity:0 })
+        );
+        m.position.set((i===0?-1:1)*(W/2+GAP/2), 0, 0);
+        group.add(m);
+      });
+
+      group.position.set(0, -1.5, .1);
+      scene.add(group);
+      return group;
+    }
+
+    function makeCaption({ text }) {
+      const W=CAM_W*.72, H=2;
+      const t = tex(W, H, (ctx, w, h) => {
+        ctx.fillStyle='rgba(255,255,255,.92)';
+        ctx.font=`bold ${h*.46}px serif`;
+        ctx.textAlign='left'; ctx.textBaseline='middle';
+        ctx.fillText(text, 0, h/2);
+      });
+      const m = mesh(W, H, t, .2);
+      m.position.set(-CAM_W*.1, -5.5, .2);
+      return m;
+    }
+
+    function makeVignette() {
+      const W=CAM_W*1.4, H=CAM_H*1.4;
+      const t = tex(W, H, (ctx, w, h) => {
+        const g = ctx.createRadialGradient(w/2,h/2,h*.12,w/2,h/2,h*.72);
+        g.addColorStop(0,'rgba(0,0,0,0)'); g.addColorStop(1,'rgba(0,0,0,.65)');
+        ctx.fillStyle=g; ctx.fillRect(0,0,w,h);
+      });
+      const m = mesh(W, H, t, -.5);
+      m.material.opacity = 1;
+      return m;
+    }
+
+    // ── Background ghost text ────────────────────────────────
+    function makeGhostText(text) {
+      const W=CAM_W*.9, H=6;
+      const t = tex(W, H, (ctx, w, h) => {
+        ctx.fillStyle='rgba(255,255,255,.04)';
+        ctx.font=`bold ${h*.7}px serif`;
+        ctx.textAlign='center'; ctx.textBaseline='middle';
+        ctx.fillText(text, w/2, h/2);
+      });
+      const m = mesh(W, H, t, -.2);
+      m.position.set(0, -1.5, -.2);
+      m.material.opacity = 1;
+      return m;
+    }
+
+    // ── Timeline ─────────────────────────────────────────────
+    function build() {
+      const badge    = makeBadge(SLIDE.badge);
+      const banner   = makeBanner(SLIDE.banner);
+      const cardPair = makeCardPair(SLIDE.cards);
+      const caption  = makeCaption(SLIDE.caption);
+      makeGhostText('时间尺度');
+      makeVignette();
+
+      const [cL, cR] = [...cardPair.children];
+      const lX=cL.position.x, rX=cR.position.x;
+      const bY=badge.position.y, cX=caption.position.x;
+
+      const tl = gsap.timeline({ paused: true });
+
+      // badge drops in
+      tl.fromTo(badge.material, {opacity:0}, {opacity:1, duration:.4}, .2)
+        .fromTo(badge.position,  {y:bY+.7},  {y:bY, duration:.45, ease:'back.out(1.7)'}, .2);
+
+      // banner slides in
+      tl.fromTo(banner.material, {opacity:0}, {opacity:1, duration:.55}, .75)
+        .fromTo(banner.position,  {x:-4},     {x:0,  duration:.65, ease:'power3.out'}, .75);
+
+      // cards fly in from sides
+      tl.fromTo(cL.material, {opacity:0}, {opacity:1, duration:.4}, 1.8)
+        .fromTo(cL.position,  {x:lX-6},   {x:lX, duration:.5, ease:'back.out(1.2)'}, 1.8)
+        .fromTo(cR.material, {opacity:0}, {opacity:1, duration:.4}, 1.95)
+        .fromTo(cR.position,  {x:rX+6},   {x:rX, duration:.5, ease:'back.out(1.2)'}, 1.95);
+
+      // caption
+      tl.fromTo(caption.material, {opacity:0}, {opacity:1, duration:.6, ease:'power2.out'}, 2.9)
+        .fromTo(caption.position,  {x:cX-1.5}, {x:cX, duration:.6, ease:'power2.out'}, 2.9);
+
+      return tl;
+    }
+
+    const timeline = build();
+    let playing = true;
+    timeline.play();
+
+    // ── Controls ─────────────────────────────────────────────
+    const ppBtn = document.getElementById('btn-pp');
+    document.getElementById('btn-restart').addEventListener('click', () => {
+      timeline.restart(); playing=true; ppBtn.textContent='⏸ Pause';
+    });
+    ppBtn.addEventListener('click', () => {
+      playing = !playing;
+      playing ? timeline.play() : timeline.pause();
+      ppBtn.textContent = playing ? '⏸ Pause' : '▶ Play';
+    });
+
+    // ── Render loop ──────────────────────────────────────────
+    const timerEl = document.getElementById('timer');
+    (function animate() {
+      requestAnimationFrame(animate);
+      tickParticles();
+      timerEl.textContent = timeline.time().toFixed(2) + 's';
+      composer.render();
+    })();
+  </script>
+</body>
+</html>
